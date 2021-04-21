@@ -1,0 +1,342 @@
+<!DOCTYPE html>
+<html lang=en>
+<head>
+    <!-- so meta -->
+    <meta charset="utf-8">
+    <meta http-equiv="X-UA-Compatible" content="IE=edge">
+    <meta name="HandheldFriendly" content="True">
+    <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=5" />
+    <meta name="description" content="结合原理介绍一下自己调试 mutex Lock 所遇到的坑，希望大家在调试的时候能避开这些坑  0X00 万恶之源——一个充满 bug 的例子我的想法是这样的，由于我想看到：  lockSlow 的具体内容，所以我需要两个 goroutine，一个 goroutine 用来上锁，然后切换到另外一个 goroutine 也上锁，那么就会进入到 lockSlow 的过程中。通过打断点 Debug 的">
+<meta property="og:type" content="article">
+<meta property="og:title" content="调试 mutex Lock 所踩的坑">
+<meta property="og:url" content="http://example.com/2021/04/19/%E8%B0%83%E8%AF%95-mutex-Lock-%E6%89%80%E8%B8%A9%E7%9A%84%E5%9D%91/index.html">
+<meta property="og:site_name" content="Hexo">
+<meta property="og:description" content="结合原理介绍一下自己调试 mutex Lock 所遇到的坑，希望大家在调试的时候能避开这些坑  0X00 万恶之源——一个充满 bug 的例子我的想法是这样的，由于我想看到：  lockSlow 的具体内容，所以我需要两个 goroutine，一个 goroutine 用来上锁，然后切换到另外一个 goroutine 也上锁，那么就会进入到 lockSlow 的过程中。通过打断点 Debug 的">
+<meta property="og:locale" content="en_US">
+<meta property="og:image" content="http://example.com/2021/04/19/%E8%B0%83%E8%AF%95-mutex-Lock-%E6%89%80%E8%B8%A9%E7%9A%84%E5%9D%91/image-20210419003108305.png">
+<meta property="og:image" content="http://example.com/2021/04/19/%E8%B0%83%E8%AF%95-mutex-Lock-%E6%89%80%E8%B8%A9%E7%9A%84%E5%9D%91/image-20210419004227486.png">
+<meta property="og:image" content="http://example.com/2021/04/19/%E8%B0%83%E8%AF%95-mutex-Lock-%E6%89%80%E8%B8%A9%E7%9A%84%E5%9D%91/image-20210419010950997.png">
+<meta property="og:image" content="http://example.com/2021/04/19/%E8%B0%83%E8%AF%95-mutex-Lock-%E6%89%80%E8%B8%A9%E7%9A%84%E5%9D%91/image-20210419011229761.png">
+<meta property="og:image" content="http://example.com/2021/04/19/%E8%B0%83%E8%AF%95-mutex-Lock-%E6%89%80%E8%B8%A9%E7%9A%84%E5%9D%91/image-20210419013058360.png">
+<meta property="og:image" content="http://example.com/2021/04/19/%E8%B0%83%E8%AF%95-mutex-Lock-%E6%89%80%E8%B8%A9%E7%9A%84%E5%9D%91/image-20210419013812026.png">
+<meta property="og:image" content="http://example.com/2021/04/19/%E8%B0%83%E8%AF%95-mutex-Lock-%E6%89%80%E8%B8%A9%E7%9A%84%E5%9D%91/image-20210419014440244.png">
+<meta property="og:image" content="http://example.com/2021/04/19/%E8%B0%83%E8%AF%95-mutex-Lock-%E6%89%80%E8%B8%A9%E7%9A%84%E5%9D%91/image-20210419014632705.png">
+<meta property="og:image" content="http://example.com/2021/04/19/%E8%B0%83%E8%AF%95-mutex-Lock-%E6%89%80%E8%B8%A9%E7%9A%84%E5%9D%91/image-20210419015314504.png">
+<meta property="article:published_time" content="2021-04-18T16:20:21.000Z">
+<meta property="article:modified_time" content="2021-04-19T02:15:12.206Z">
+<meta property="article:author" content="John Doe">
+<meta name="twitter:card" content="summary">
+<meta name="twitter:image" content="http://example.com/2021/04/19/%E8%B0%83%E8%AF%95-mutex-Lock-%E6%89%80%E8%B8%A9%E7%9A%84%E5%9D%91/image-20210419003108305.png">
+    
+    
+      
+        
+          <link rel="shortcut icon" href="/images/favicon.ico">
+        
+      
+      
+        
+          <link rel="icon" type="image/png" href="/images/favicon-192x192.png" sizes="192x192">
+        
+      
+      
+        
+          <link rel="apple-touch-icon" sizes="180x180" href="/images/apple-touch-icon.png">
+        
+      
+    
+    <!-- title -->
+    <title>调试 mutex Lock 所踩的坑</title>
+    <!-- styles -->
+    
+<link rel="stylesheet" href="/css/style.css">
+
+    <!-- persian styles -->
+    
+    <!-- rss -->
+    
+    
+<meta name="generator" content="Hexo 5.4.0"></head>
+
+<body class="max-width mx-auto px3 ltr">
+    
+      <div id="header-post">
+  <a id="menu-icon" href="#" aria-label="Menu"><i class="fas fa-bars fa-lg"></i></a>
+  <a id="menu-icon-tablet" href="#" aria-label="Menu"><i class="fas fa-bars fa-lg"></i></a>
+  <a id="top-icon-tablet" href="#" "Top" onclick="$('html, body').animate({ scrollTop: 0 }, 'fast');" style="display:none;"><i class="fas fa-chevron-up fa-lg"></i></a>
+  <span id="menu">
+    <span id="nav">
+      <ul>
+         
+          <li><a href="/">Home</a></li>
+         
+          <li><a href="/about/">About</a></li>
+         
+          <li><a href="/archives/">Writing</a></li>
+         
+          <li><a href="/projects_url">Projects</a></li>
+        
+      </ul>
+    </span>
+    <br/>
+    <span id="actions">
+      <ul>
+        
+        
+        <li><a class="icon" aria-label="Next post " href="/2021/04/14/%E7%90%86%E8%A7%A3-GFS/"><i class="fas fa-chevron-right" aria-hidden="true" onmouseover="$('#i-next').toggle();" onmouseout="$('#i-next').toggle();"></i></a></li>
+        
+        <li><a class="icon" aria-label="Back to top " href="#" onclick="$('html, body').animate({ scrollTop: 0 }, 'fast');"><i class="fas fa-chevron-up" aria-hidden="true" onmouseover="$('#i-top').toggle();" onmouseout="$('#i-top').toggle();"></i></a></li>
+        <li><a class="icon" aria-label="Share post " href="#"><i class="fas fa-share-alt" aria-hidden="true" onmouseover="$('#i-share').toggle();" onmouseout="$('#i-share').toggle();" onclick="$('#share').toggle();return false;"></i></a></li>
+      </ul>
+      <span id="i-prev" class="info" style="display:none;">Previous post</span>
+      <span id="i-next" class="info" style="display:none;">Next post</span>
+      <span id="i-top" class="info" style="display:none;">Back to top</span>
+      <span id="i-share" class="info" style="display:none;">Share post</span>
+    </span>
+    <br/>
+    <div id="share" style="display: none">
+      <ul>
+  <li><a class="icon" target="_blank" rel="noopener" href="http://www.facebook.com/sharer.php?u=http://example.com/2021/04/19/%E8%B0%83%E8%AF%95-mutex-Lock-%E6%89%80%E8%B8%A9%E7%9A%84%E5%9D%91/"><i class="fab fa-facebook " aria-hidden="true"></i></a></li>
+  <li><a class="icon" target="_blank" rel="noopener" href="https://twitter.com/share?url=http://example.com/2021/04/19/%E8%B0%83%E8%AF%95-mutex-Lock-%E6%89%80%E8%B8%A9%E7%9A%84%E5%9D%91/&text=调试 mutex Lock 所踩的坑"><i class="fab fa-twitter " aria-hidden="true"></i></a></li>
+  <li><a class="icon" target="_blank" rel="noopener" href="http://www.linkedin.com/shareArticle?url=http://example.com/2021/04/19/%E8%B0%83%E8%AF%95-mutex-Lock-%E6%89%80%E8%B8%A9%E7%9A%84%E5%9D%91/&title=调试 mutex Lock 所踩的坑"><i class="fab fa-linkedin " aria-hidden="true"></i></a></li>
+  <li><a class="icon" target="_blank" rel="noopener" href="https://pinterest.com/pin/create/bookmarklet/?url=http://example.com/2021/04/19/%E8%B0%83%E8%AF%95-mutex-Lock-%E6%89%80%E8%B8%A9%E7%9A%84%E5%9D%91/&is_video=false&description=调试 mutex Lock 所踩的坑"><i class="fab fa-pinterest " aria-hidden="true"></i></a></li>
+  <li><a class="icon" href="mailto:?subject=调试 mutex Lock 所踩的坑&body=Check out this article: http://example.com/2021/04/19/%E8%B0%83%E8%AF%95-mutex-Lock-%E6%89%80%E8%B8%A9%E7%9A%84%E5%9D%91/"><i class="fas fa-envelope " aria-hidden="true"></i></a></li>
+  <li><a class="icon" target="_blank" rel="noopener" href="https://getpocket.com/save?url=http://example.com/2021/04/19/%E8%B0%83%E8%AF%95-mutex-Lock-%E6%89%80%E8%B8%A9%E7%9A%84%E5%9D%91/&title=调试 mutex Lock 所踩的坑"><i class="fab fa-get-pocket " aria-hidden="true"></i></a></li>
+  <li><a class="icon" target="_blank" rel="noopener" href="http://reddit.com/submit?url=http://example.com/2021/04/19/%E8%B0%83%E8%AF%95-mutex-Lock-%E6%89%80%E8%B8%A9%E7%9A%84%E5%9D%91/&title=调试 mutex Lock 所踩的坑"><i class="fab fa-reddit " aria-hidden="true"></i></a></li>
+  <li><a class="icon" target="_blank" rel="noopener" href="http://www.stumbleupon.com/submit?url=http://example.com/2021/04/19/%E8%B0%83%E8%AF%95-mutex-Lock-%E6%89%80%E8%B8%A9%E7%9A%84%E5%9D%91/&title=调试 mutex Lock 所踩的坑"><i class="fab fa-stumbleupon " aria-hidden="true"></i></a></li>
+  <li><a class="icon" target="_blank" rel="noopener" href="http://digg.com/submit?url=http://example.com/2021/04/19/%E8%B0%83%E8%AF%95-mutex-Lock-%E6%89%80%E8%B8%A9%E7%9A%84%E5%9D%91/&title=调试 mutex Lock 所踩的坑"><i class="fab fa-digg " aria-hidden="true"></i></a></li>
+  <li><a class="icon" target="_blank" rel="noopener" href="http://www.tumblr.com/share/link?url=http://example.com/2021/04/19/%E8%B0%83%E8%AF%95-mutex-Lock-%E6%89%80%E8%B8%A9%E7%9A%84%E5%9D%91/&name=调试 mutex Lock 所踩的坑&description="><i class="fab fa-tumblr " aria-hidden="true"></i></a></li>
+  <li><a class="icon" target="_blank" rel="noopener" href="https://news.ycombinator.com/submitlink?u=http://example.com/2021/04/19/%E8%B0%83%E8%AF%95-mutex-Lock-%E6%89%80%E8%B8%A9%E7%9A%84%E5%9D%91/&t=调试 mutex Lock 所踩的坑"><i class="fab fa-hacker-news " aria-hidden="true"></i></a></li>
+</ul>
+
+    </div>
+    <div id="toc">
+      <ol class="toc"><li class="toc-item toc-level-2"><a class="toc-link" href="#0X00-%E4%B8%87%E6%81%B6%E4%B9%8B%E6%BA%90%E2%80%94%E2%80%94%E4%B8%80%E4%B8%AA%E5%85%85%E6%BB%A1-bug-%E7%9A%84%E4%BE%8B%E5%AD%90"><span class="toc-number">1.</span> <span class="toc-text">0X00 万恶之源——一个充满 bug 的例子</span></a></li><li class="toc-item toc-level-2"><a class="toc-link" href="#0X01-%E6%96%AD%E7%82%B9%E7%9A%84%E5%8E%9F%E7%90%86%E4%BB%A5%E5%8F%8A%E6%96%B0%E9%81%87%E5%88%B0%E7%9A%84%E5%9D%91"><span class="toc-number">2.</span> <span class="toc-text">0X01 断点的原理以及新遇到的坑</span></a></li><li class="toc-item toc-level-2"><a class="toc-link" href="#0X02-%E8%BF%98%E8%BF%98%E8%BF%98%E6%9C%89%E4%B8%80%E4%B8%AA%E5%9D%91"><span class="toc-number">3.</span> <span class="toc-text">0X02 还还还有一个坑</span></a></li><li class="toc-item toc-level-2"><a class="toc-link" href="#0X03-%E6%80%BB%E7%BB%93"><span class="toc-number">4.</span> <span class="toc-text">0X03 总结</span></a></li><li class="toc-item toc-level-2"><a class="toc-link" href="#0X04-%E5%8F%82%E8%80%83%E4%B8%8E%E5%BC%95%E7%94%A8"><span class="toc-number">5.</span> <span class="toc-text">0X04 参考与引用</span></a></li></ol>
+    </div>
+  </span>
+</div>
+
+    
+    <div class="content index py4">
+        
+        <article class="post" itemscope itemtype="http://schema.org/BlogPosting">
+  <header>
+    
+    <h1 class="posttitle" itemprop="name headline">
+        调试 mutex Lock 所踩的坑
+    </h1>
+
+
+
+    <div class="meta">
+      <span class="author" itemprop="author" itemscope itemtype="http://schema.org/Person">
+        <span itemprop="name">John Doe</span>
+      </span>
+      
+    <div class="postdate">
+      
+        <time datetime="2021-04-18T16:20:21.000Z" itemprop="datePublished">2021-04-19</time>
+        
+      
+    </div>
+
+
+      
+
+      
+
+    </div>
+  </header>
+  
+
+  <div class="content" itemprop="articleBody">
+    <blockquote>
+<p>结合原理介绍一下自己调试 mutex Lock 所遇到的坑，希望大家在调试的时候能避开这些坑</p>
+</blockquote>
+<h2 id="0X00-万恶之源——一个充满-bug-的例子"><a href="#0X00-万恶之源——一个充满-bug-的例子" class="headerlink" title="0X00 万恶之源——一个充满 bug 的例子"></a>0X00 万恶之源——一个充满 bug 的例子</h2><p>我的想法是这样的，由于我想看到：</p>
+<p><img src="/2021/04/19/%E8%B0%83%E8%AF%95-mutex-Lock-%E6%89%80%E8%B8%A9%E7%9A%84%E5%9D%91/image-20210419003108305.png" alt="image-20210419003108305"></p>
+<p>lockSlow 的具体内容，所以我需要两个 goroutine，一个 goroutine 用来上锁，然后切换到另外一个 goroutine 也上锁，那么就会进入到 lockSlow 的过程中。通过打断点 Debug 的时候就能看到具体内容了。于是我设计了下面的程序：</p>
+<figure class="highlight go"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br></pre></td><td class="code"><pre><span class="line"><span class="keyword">package</span> main</span><br><span class="line"></span><br><span class="line"><span class="keyword">import</span> (</span><br><span class="line">	<span class="string">&quot;sync&quot;</span></span><br><span class="line">)</span><br><span class="line"></span><br><span class="line"><span class="function"><span class="keyword">func</span> <span class="title">main</span><span class="params">()</span></span> &#123;</span><br><span class="line">	mu := sync.Mutex&#123;&#125;</span><br><span class="line">	<span class="keyword">go</span> <span class="function"><span class="keyword">func</span><span class="params">()</span></span> &#123;</span><br><span class="line">		<span class="keyword">for</span> &#123;</span><br><span class="line">			mu.Lock()</span><br><span class="line">			mu.Unlock()</span><br><span class="line">		&#125;</span><br><span class="line">	&#125;()</span><br><span class="line">	<span class="keyword">go</span> <span class="function"><span class="keyword">func</span><span class="params">()</span></span> &#123;</span><br><span class="line">		<span class="keyword">for</span> &#123;</span><br><span class="line">			mu.Lock()</span><br><span class="line">			mu.Unlock()</span><br><span class="line">		&#125;</span><br><span class="line">	&#125;()</span><br><span class="line"></span><br><span class="line">	<span class="keyword">select</span> &#123;</span><br><span class="line"></span><br><span class="line">	&#125;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+
+
+
+<p>并打了两个断点：</p>
+<p><img src="/2021/04/19/%E8%B0%83%E8%AF%95-mutex-Lock-%E6%89%80%E8%B8%A9%E7%9A%84%E5%9D%91/image-20210419004227486.png" alt="image-20210419004227486"></p>
+<p>我的设想是：断点会在 19 11 行起作用，在 g2 的断点停住以后执行 Lock，然后切换到 g1，再 Lock，那不就是可以看到 g1 执行 lockSlow 的代码了？？？</p>
+<p><strong>结果是：too young too simple。这样打断点根本不会阻塞 g1，g1 和 g2 分别在 11 和 19 行停住以后。当你运行任何一个，另外一个也会运行。</strong></p>
+<p>为了方便观察这一个事实，我设计了下面的代码：</p>
+<p><img src="/2021/04/19/%E8%B0%83%E8%AF%95-mutex-Lock-%E6%89%80%E8%B8%A9%E7%9A%84%E5%9D%91/image-20210419010950997.png" alt="image-20210419010950997"></p>
+<p><strong>在 g2 next 以后，你可能会看到 g1 不知道处在什么地方或者又在 12 行停下来了，但是 cnt 的值为 1：</strong></p>
+<p><img src="/2021/04/19/%E8%B0%83%E8%AF%95-mutex-Lock-%E6%89%80%E8%B8%A9%E7%9A%84%E5%9D%91/image-20210419011229761.png" alt="image-20210419011229761"></p>
+<h2 id="0X01-断点的原理以及新遇到的坑"><a href="#0X01-断点的原理以及新遇到的坑" class="headerlink" title="0X01 断点的原理以及新遇到的坑"></a>0X01 断点的原理以及新遇到的坑</h2><p>为什么会出现这个现象，我不禁陷入了沉思。。。</p>
+<p>为什么呢？为什么断点不会阻塞呢？难道是 dlv 的 bug？（显然不可能）</p>
+<p>突然想起来之前看的断点的原理：</p>
+<p><strong>简单来说：像 gdb、dlv 这样的程序通过 ptrace 这样的系统调用告诉操作系统，我要监控另外一个程序 A 了，然后交付给 A 的任何<a target="_blank" rel="noopener" href="https://oenhan.com/rwsem-realtime-task-hung">信号</a>（除 SIGKILL 之外）都将被 gdb、dlv 先行截获，gdb、dlv 因此有机会对信号进行相应处理，然后去查看 A 程序的运行状况。而断点就是在你要执行的命令之前插入一条能产生信号的指令。</strong></p>
+<p>所以产生这种现象的原因就是：</p>
+<p><strong>断点就是插入了一条指令，根本不会阻塞程序。一旦 next 了，就相当于让程序继续运行了。那么所有的 goroutine 都会运行</strong></p>
+<p>理解了这个以后，我设计了新的程序用于 debug：</p>
+<p><img src="/2021/04/19/%E8%B0%83%E8%AF%95-mutex-Lock-%E6%89%80%E8%B8%A9%E7%9A%84%E5%9D%91/image-20210419013058360.png" alt="image-20210419013058360"></p>
+<p><strong>按照之前的老套路，g1 和 g2 会因为断点停在在 12 20 行，在 g2 next，成功停在了 13 行，由于 g2 Lock 了，那么 g1 Lock 里面就可以看到 slowLock 了吧？</strong></p>
+<p><strong>结果又错了！too young too simple</strong></p>
+<p>由于 g2 也会运行，所以锁会被 21 行的代码释放掉，为了能控制 g2 的 Lock 我又设计了下面的代码。</p>
+<p><img src="/2021/04/19/%E8%B0%83%E8%AF%95-mutex-Lock-%E6%89%80%E8%B8%A9%E7%9A%84%E5%9D%91/image-20210419013812026.png" alt="image-20210419013812026"></p>
+<p>想释放锁的时候只需要回到 g2 给 unlock 设置为 true 就可以。（goland 支持直接修改变量的值）。</p>
+<p>但是一旦 g1 因为被锁住而阻塞的时候。整个程序都不会因为 g2 在 23 行的断点被唤醒起来了。</p>
+<p><img src="/2021/04/19/%E8%B0%83%E8%AF%95-mutex-Lock-%E6%89%80%E8%B8%A9%E7%9A%84%E5%9D%91/image-20210419014440244.png" alt="image-20210419014440244"></p>
+<h2 id="0X02-还还还有一个坑"><a href="#0X02-还还还有一个坑" class="headerlink" title="0X02 还还还有一个坑"></a>0X02 还还还有一个坑</h2><p>这是为啥？？？我明明打了断点却不被唤醒？？？</p>
+<p>结果还是 goland、dlv 的 bug 吗？？？（显然不可能）</p>
+<p>最后我在使用了 dlv 直接调试以后发现了问题（具体过程不展示了，只展示报的错）：</p>
+<p><img src="/2021/04/19/%E8%B0%83%E8%AF%95-mutex-Lock-%E6%89%80%E8%B8%A9%E7%9A%84%E5%9D%91/image-20210419014632705.png" alt="image-20210419014632705"></p>
+<p>其实 dlv 发现了 breakpoint，但是因为不是同一个协程（原因是我猜的），选择了忽略。</p>
+<p>解决办法是：</p>
+<p><img src="/2021/04/19/%E8%B0%83%E8%AF%95-mutex-Lock-%E6%89%80%E8%B8%A9%E7%9A%84%E5%9D%91/image-20210419015314504.png" alt="image-20210419015314504"></p>
+<h2 id="0X03-总结"><a href="#0X03-总结" class="headerlink" title="0X03 总结"></a>0X03 总结</h2><p>最后的代码：</p>
+<figure class="highlight go"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br><span class="line">28</span><br><span class="line">29</span><br><span class="line">30</span><br><span class="line">31</span><br><span class="line">32</span><br></pre></td><td class="code"><pre><span class="line"><span class="keyword">package</span> main</span><br><span class="line"></span><br><span class="line"><span class="keyword">import</span> (</span><br><span class="line">	<span class="string">&quot;sync&quot;</span></span><br><span class="line">)</span><br><span class="line"></span><br><span class="line"><span class="function"><span class="keyword">func</span> <span class="title">main</span><span class="params">()</span></span> &#123;</span><br><span class="line">	mu := sync.Mutex&#123;&#125;</span><br><span class="line">	<span class="keyword">go</span> <span class="function"><span class="keyword">func</span><span class="params">()</span></span> &#123;</span><br><span class="line">		cnt := <span class="number">0</span></span><br><span class="line">		<span class="keyword">for</span> &#123;</span><br><span class="line">			cnt += <span class="number">1</span></span><br><span class="line">			mu.Lock()</span><br><span class="line">			mu.Unlock()</span><br><span class="line">		&#125;</span><br><span class="line">	&#125;()</span><br><span class="line"></span><br><span class="line">	<span class="keyword">go</span> <span class="function"><span class="keyword">func</span><span class="params">()</span></span> &#123;</span><br><span class="line">		unlock := <span class="literal">false</span></span><br><span class="line">		<span class="keyword">for</span> &#123;</span><br><span class="line">			mu.Lock()</span><br><span class="line">			<span class="keyword">for</span> !unlock &#123;</span><br><span class="line">				unlock = <span class="literal">false</span></span><br><span class="line">			&#125;</span><br><span class="line">			mu.Unlock()</span><br><span class="line">		&#125;</span><br><span class="line">	&#125;()</span><br><span class="line"></span><br><span class="line">	<span class="keyword">select</span> &#123;</span><br><span class="line"></span><br><span class="line">	&#125;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+
+
+
+
+
+<p>我不太确定我这样做是不是最优解，其实就是一个调试多协程的问题。gdb 中可以通过设置 set scheduler-locking on 这样的方法，禁止其他的线程运行，但是 golang 中好像没有这样的办法，停止其他所有协程的运行。</p>
+<p>不想引入 channel 和 mutex，原因是他们本身都有锁，如果我在 Lock 的源码中打了断点，它们本身会加锁，运行的时候，我感觉不知道这个断点是 channel 或者 context 引起来的还是我本身的 mutex Lock 引起来的。</p>
+<p>最后希望大家能别像我踩坑。</p>
+<h2 id="0X04-参考与引用"><a href="#0X04-参考与引用" class="headerlink" title="0X04 参考与引用"></a>0X04 参考与引用</h2><p>[1] <a target="_blank" rel="noopener" href="https://oenhan.com/gdb-principle">GDB工作原理和内核实现</a></p>
+
+  </div>
+</article>
+
+
+
+        
+          <div id="footer-post-container">
+  <div id="footer-post">
+
+    <div id="nav-footer" style="display: none">
+      <ul>
+         
+          <li><a href="/">Home</a></li>
+         
+          <li><a href="/about/">About</a></li>
+         
+          <li><a href="/archives/">Writing</a></li>
+         
+          <li><a href="/projects_url">Projects</a></li>
+        
+      </ul>
+    </div>
+
+    <div id="toc-footer" style="display: none">
+      <ol class="toc"><li class="toc-item toc-level-2"><a class="toc-link" href="#0X00-%E4%B8%87%E6%81%B6%E4%B9%8B%E6%BA%90%E2%80%94%E2%80%94%E4%B8%80%E4%B8%AA%E5%85%85%E6%BB%A1-bug-%E7%9A%84%E4%BE%8B%E5%AD%90"><span class="toc-number">1.</span> <span class="toc-text">0X00 万恶之源——一个充满 bug 的例子</span></a></li><li class="toc-item toc-level-2"><a class="toc-link" href="#0X01-%E6%96%AD%E7%82%B9%E7%9A%84%E5%8E%9F%E7%90%86%E4%BB%A5%E5%8F%8A%E6%96%B0%E9%81%87%E5%88%B0%E7%9A%84%E5%9D%91"><span class="toc-number">2.</span> <span class="toc-text">0X01 断点的原理以及新遇到的坑</span></a></li><li class="toc-item toc-level-2"><a class="toc-link" href="#0X02-%E8%BF%98%E8%BF%98%E8%BF%98%E6%9C%89%E4%B8%80%E4%B8%AA%E5%9D%91"><span class="toc-number">3.</span> <span class="toc-text">0X02 还还还有一个坑</span></a></li><li class="toc-item toc-level-2"><a class="toc-link" href="#0X03-%E6%80%BB%E7%BB%93"><span class="toc-number">4.</span> <span class="toc-text">0X03 总结</span></a></li><li class="toc-item toc-level-2"><a class="toc-link" href="#0X04-%E5%8F%82%E8%80%83%E4%B8%8E%E5%BC%95%E7%94%A8"><span class="toc-number">5.</span> <span class="toc-text">0X04 参考与引用</span></a></li></ol>
+    </div>
+
+    <div id="share-footer" style="display: none">
+      <ul>
+  <li><a class="icon" target="_blank" rel="noopener" href="http://www.facebook.com/sharer.php?u=http://example.com/2021/04/19/%E8%B0%83%E8%AF%95-mutex-Lock-%E6%89%80%E8%B8%A9%E7%9A%84%E5%9D%91/"><i class="fab fa-facebook fa-lg" aria-hidden="true"></i></a></li>
+  <li><a class="icon" target="_blank" rel="noopener" href="https://twitter.com/share?url=http://example.com/2021/04/19/%E8%B0%83%E8%AF%95-mutex-Lock-%E6%89%80%E8%B8%A9%E7%9A%84%E5%9D%91/&text=调试 mutex Lock 所踩的坑"><i class="fab fa-twitter fa-lg" aria-hidden="true"></i></a></li>
+  <li><a class="icon" target="_blank" rel="noopener" href="http://www.linkedin.com/shareArticle?url=http://example.com/2021/04/19/%E8%B0%83%E8%AF%95-mutex-Lock-%E6%89%80%E8%B8%A9%E7%9A%84%E5%9D%91/&title=调试 mutex Lock 所踩的坑"><i class="fab fa-linkedin fa-lg" aria-hidden="true"></i></a></li>
+  <li><a class="icon" target="_blank" rel="noopener" href="https://pinterest.com/pin/create/bookmarklet/?url=http://example.com/2021/04/19/%E8%B0%83%E8%AF%95-mutex-Lock-%E6%89%80%E8%B8%A9%E7%9A%84%E5%9D%91/&is_video=false&description=调试 mutex Lock 所踩的坑"><i class="fab fa-pinterest fa-lg" aria-hidden="true"></i></a></li>
+  <li><a class="icon" href="mailto:?subject=调试 mutex Lock 所踩的坑&body=Check out this article: http://example.com/2021/04/19/%E8%B0%83%E8%AF%95-mutex-Lock-%E6%89%80%E8%B8%A9%E7%9A%84%E5%9D%91/"><i class="fas fa-envelope fa-lg" aria-hidden="true"></i></a></li>
+  <li><a class="icon" target="_blank" rel="noopener" href="https://getpocket.com/save?url=http://example.com/2021/04/19/%E8%B0%83%E8%AF%95-mutex-Lock-%E6%89%80%E8%B8%A9%E7%9A%84%E5%9D%91/&title=调试 mutex Lock 所踩的坑"><i class="fab fa-get-pocket fa-lg" aria-hidden="true"></i></a></li>
+  <li><a class="icon" target="_blank" rel="noopener" href="http://reddit.com/submit?url=http://example.com/2021/04/19/%E8%B0%83%E8%AF%95-mutex-Lock-%E6%89%80%E8%B8%A9%E7%9A%84%E5%9D%91/&title=调试 mutex Lock 所踩的坑"><i class="fab fa-reddit fa-lg" aria-hidden="true"></i></a></li>
+  <li><a class="icon" target="_blank" rel="noopener" href="http://www.stumbleupon.com/submit?url=http://example.com/2021/04/19/%E8%B0%83%E8%AF%95-mutex-Lock-%E6%89%80%E8%B8%A9%E7%9A%84%E5%9D%91/&title=调试 mutex Lock 所踩的坑"><i class="fab fa-stumbleupon fa-lg" aria-hidden="true"></i></a></li>
+  <li><a class="icon" target="_blank" rel="noopener" href="http://digg.com/submit?url=http://example.com/2021/04/19/%E8%B0%83%E8%AF%95-mutex-Lock-%E6%89%80%E8%B8%A9%E7%9A%84%E5%9D%91/&title=调试 mutex Lock 所踩的坑"><i class="fab fa-digg fa-lg" aria-hidden="true"></i></a></li>
+  <li><a class="icon" target="_blank" rel="noopener" href="http://www.tumblr.com/share/link?url=http://example.com/2021/04/19/%E8%B0%83%E8%AF%95-mutex-Lock-%E6%89%80%E8%B8%A9%E7%9A%84%E5%9D%91/&name=调试 mutex Lock 所踩的坑&description="><i class="fab fa-tumblr fa-lg" aria-hidden="true"></i></a></li>
+  <li><a class="icon" target="_blank" rel="noopener" href="https://news.ycombinator.com/submitlink?u=http://example.com/2021/04/19/%E8%B0%83%E8%AF%95-mutex-Lock-%E6%89%80%E8%B8%A9%E7%9A%84%E5%9D%91/&t=调试 mutex Lock 所踩的坑"><i class="fab fa-hacker-news fa-lg" aria-hidden="true"></i></a></li>
+</ul>
+
+    </div>
+
+    <div id="actions-footer">
+        <a id="menu" class="icon" href="#" onclick="$('#nav-footer').toggle();return false;"><i class="fas fa-bars fa-lg" aria-hidden="true"></i> Menu</a>
+        <a id="toc" class="icon" href="#" onclick="$('#toc-footer').toggle();return false;"><i class="fas fa-list fa-lg" aria-hidden="true"></i> TOC</a>
+        <a id="share" class="icon" href="#" onclick="$('#share-footer').toggle();return false;"><i class="fas fa-share-alt fa-lg" aria-hidden="true"></i> Share</a>
+        <a id="top" style="display:none" class="icon" href="#" onclick="$('html, body').animate({ scrollTop: 0 }, 'fast');"><i class="fas fa-chevron-up fa-lg" aria-hidden="true"></i> Top</a>
+    </div>
+
+  </div>
+</div>
+
+        
+        <footer id="footer">
+  <div class="footer-left">
+    Copyright &copy;
+    
+    
+    2016-2021
+    John Doe
+  </div>
+  <div class="footer-right">
+    <nav>
+      <ul>
+         
+          <li><a href="/">Home</a></li>
+         
+          <li><a href="/about/">About</a></li>
+         
+          <li><a href="/archives/">Writing</a></li>
+         
+          <li><a href="/projects_url">Projects</a></li>
+        
+      </ul>
+    </nav>
+  </div>
+</footer>
+
+    </div>
+    <!-- styles -->
+
+
+
+  <link rel="preload" as="style" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/5.15.2/css/all.min.css" crossorigin="anonymous" onload="this.onload=null;this.rel='stylesheet'"/>
+
+
+    <!-- jquery -->
+ 
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/jquery/3.6.0/jquery.min.js" crossorigin="anonymous"></script> 
+
+
+
+
+<!-- clipboard -->
+
+  
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/clipboard.js/2.0.7/clipboard.min.js" crossorigin="anonymous"></script> 
+  
+  <script type="text/javascript">
+  $(function() {
+    // copy-btn HTML
+    var btn = "<span class=\"btn-copy tooltipped tooltipped-sw\" aria-label=\"Copy to clipboard!\">";
+    btn += '<i class="far fa-clone"></i>';
+    btn += '</span>'; 
+    // mount it!
+    $(".highlight table").before(btn);
+    var clip = new ClipboardJS('.btn-copy', {
+      text: function(trigger) {
+        return Array.from(trigger.nextElementSibling.querySelectorAll('.code')).reduce((str,it)=>str+it.innerText+'\n','')
+      }
+    });
+    clip.on('success', function(e) {
+      e.trigger.setAttribute('aria-label', "Copied!");
+      e.clearSelection();
+    })
+  })
+  </script>
+
+
+<script src="/js/main.js"></script>
+
+<!-- search -->
+
+<!-- Google Analytics -->
+
+<!-- Baidu Analytics -->
+
+<!-- Cloudflare Analytics -->
+
+<!-- Umami Analytics -->
+
+<!-- Disqus Comments -->
+
+
+</body>
+</html>
