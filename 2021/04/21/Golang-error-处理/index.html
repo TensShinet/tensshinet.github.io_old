@@ -1,0 +1,376 @@
+<!DOCTYPE html>
+<html lang=en>
+<head>
+    <!-- so meta -->
+    <meta charset="utf-8">
+    <meta http-equiv="X-UA-Compatible" content="IE=edge">
+    <meta name="HandheldFriendly" content="True">
+    <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=5" />
+    <meta name="description" content="在学习了 errors 相关的最佳实践以后，好好整理总结一下这方面的知识。  0X00 error 新用法首先通读这篇文档：https:&#x2F;&#x2F;golang.org&#x2F;pkg&#x2F;errors&#x2F; 主要是多了这几个函数： 1import &quot;github.com&#x2F;pkg&#x2F;errors&quot;     WithWithStack  Unwrap 和 Wrap  As  Is  Cause   从源">
+<meta property="og:type" content="article">
+<meta property="og:title" content="Golang error 处理">
+<meta property="og:url" content="http://example.com/2021/04/21/Golang-error-%E5%A4%84%E7%90%86/index.html">
+<meta property="og:site_name" content="Hexo">
+<meta property="og:description" content="在学习了 errors 相关的最佳实践以后，好好整理总结一下这方面的知识。  0X00 error 新用法首先通读这篇文档：https:&#x2F;&#x2F;golang.org&#x2F;pkg&#x2F;errors&#x2F; 主要是多了这几个函数： 1import &quot;github.com&#x2F;pkg&#x2F;errors&quot;     WithWithStack  Unwrap 和 Wrap  As  Is  Cause   从源">
+<meta property="og:locale" content="en_US">
+<meta property="article:published_time" content="2021-04-21T05:33:06.000Z">
+<meta property="article:modified_time" content="2021-04-22T05:35:45.413Z">
+<meta property="article:author" content="John Doe">
+<meta name="twitter:card" content="summary">
+    
+    
+      
+        
+          <link rel="shortcut icon" href="/images/favicon.ico">
+        
+      
+      
+        
+          <link rel="icon" type="image/png" href="/images/favicon-192x192.png" sizes="192x192">
+        
+      
+      
+        
+          <link rel="apple-touch-icon" sizes="180x180" href="/images/apple-touch-icon.png">
+        
+      
+    
+    <!-- title -->
+    <title>Golang error 处理</title>
+    <!-- styles -->
+    
+<link rel="stylesheet" href="/css/style.css">
+
+    <!-- persian styles -->
+    
+    <!-- rss -->
+    
+    
+<meta name="generator" content="Hexo 5.4.0"></head>
+
+<body class="max-width mx-auto px3 ltr">
+    
+      <div id="header-post">
+  <a id="menu-icon" href="#" aria-label="Menu"><i class="fas fa-bars fa-lg"></i></a>
+  <a id="menu-icon-tablet" href="#" aria-label="Menu"><i class="fas fa-bars fa-lg"></i></a>
+  <a id="top-icon-tablet" href="#" "Top" onclick="$('html, body').animate({ scrollTop: 0 }, 'fast');" style="display:none;"><i class="fas fa-chevron-up fa-lg"></i></a>
+  <span id="menu">
+    <span id="nav">
+      <ul>
+         
+          <li><a href="/">Home</a></li>
+         
+          <li><a href="/about/">About</a></li>
+         
+          <li><a href="/archives/">Writing</a></li>
+         
+          <li><a href="/projects_url">Projects</a></li>
+        
+      </ul>
+    </span>
+    <br/>
+    <span id="actions">
+      <ul>
+        
+        <li><a class="icon" aria-label="Previous post " href="/2021/04/22/%E7%AE%80%E5%8D%95%E5%B9%B6%E5%8F%91%E9%93%BE%E8%A1%A8%E8%AE%BE%E8%AE%A1/"><i class="fas fa-chevron-left" aria-hidden="true" onmouseover="$('#i-prev').toggle();" onmouseout="$('#i-prev').toggle();"></i></a></li>
+        
+        
+        <li><a class="icon" aria-label="Next post " href="/2021/04/19/%E8%B0%83%E8%AF%95-mutex-Lock-%E6%89%80%E8%B8%A9%E7%9A%84%E5%9D%91/"><i class="fas fa-chevron-right" aria-hidden="true" onmouseover="$('#i-next').toggle();" onmouseout="$('#i-next').toggle();"></i></a></li>
+        
+        <li><a class="icon" aria-label="Back to top " href="#" onclick="$('html, body').animate({ scrollTop: 0 }, 'fast');"><i class="fas fa-chevron-up" aria-hidden="true" onmouseover="$('#i-top').toggle();" onmouseout="$('#i-top').toggle();"></i></a></li>
+        <li><a class="icon" aria-label="Share post " href="#"><i class="fas fa-share-alt" aria-hidden="true" onmouseover="$('#i-share').toggle();" onmouseout="$('#i-share').toggle();" onclick="$('#share').toggle();return false;"></i></a></li>
+      </ul>
+      <span id="i-prev" class="info" style="display:none;">Previous post</span>
+      <span id="i-next" class="info" style="display:none;">Next post</span>
+      <span id="i-top" class="info" style="display:none;">Back to top</span>
+      <span id="i-share" class="info" style="display:none;">Share post</span>
+    </span>
+    <br/>
+    <div id="share" style="display: none">
+      <ul>
+  <li><a class="icon" target="_blank" rel="noopener" href="http://www.facebook.com/sharer.php?u=http://example.com/2021/04/21/Golang-error-%E5%A4%84%E7%90%86/"><i class="fab fa-facebook " aria-hidden="true"></i></a></li>
+  <li><a class="icon" target="_blank" rel="noopener" href="https://twitter.com/share?url=http://example.com/2021/04/21/Golang-error-%E5%A4%84%E7%90%86/&text=Golang error 处理"><i class="fab fa-twitter " aria-hidden="true"></i></a></li>
+  <li><a class="icon" target="_blank" rel="noopener" href="http://www.linkedin.com/shareArticle?url=http://example.com/2021/04/21/Golang-error-%E5%A4%84%E7%90%86/&title=Golang error 处理"><i class="fab fa-linkedin " aria-hidden="true"></i></a></li>
+  <li><a class="icon" target="_blank" rel="noopener" href="https://pinterest.com/pin/create/bookmarklet/?url=http://example.com/2021/04/21/Golang-error-%E5%A4%84%E7%90%86/&is_video=false&description=Golang error 处理"><i class="fab fa-pinterest " aria-hidden="true"></i></a></li>
+  <li><a class="icon" href="mailto:?subject=Golang error 处理&body=Check out this article: http://example.com/2021/04/21/Golang-error-%E5%A4%84%E7%90%86/"><i class="fas fa-envelope " aria-hidden="true"></i></a></li>
+  <li><a class="icon" target="_blank" rel="noopener" href="https://getpocket.com/save?url=http://example.com/2021/04/21/Golang-error-%E5%A4%84%E7%90%86/&title=Golang error 处理"><i class="fab fa-get-pocket " aria-hidden="true"></i></a></li>
+  <li><a class="icon" target="_blank" rel="noopener" href="http://reddit.com/submit?url=http://example.com/2021/04/21/Golang-error-%E5%A4%84%E7%90%86/&title=Golang error 处理"><i class="fab fa-reddit " aria-hidden="true"></i></a></li>
+  <li><a class="icon" target="_blank" rel="noopener" href="http://www.stumbleupon.com/submit?url=http://example.com/2021/04/21/Golang-error-%E5%A4%84%E7%90%86/&title=Golang error 处理"><i class="fab fa-stumbleupon " aria-hidden="true"></i></a></li>
+  <li><a class="icon" target="_blank" rel="noopener" href="http://digg.com/submit?url=http://example.com/2021/04/21/Golang-error-%E5%A4%84%E7%90%86/&title=Golang error 处理"><i class="fab fa-digg " aria-hidden="true"></i></a></li>
+  <li><a class="icon" target="_blank" rel="noopener" href="http://www.tumblr.com/share/link?url=http://example.com/2021/04/21/Golang-error-%E5%A4%84%E7%90%86/&name=Golang error 处理&description="><i class="fab fa-tumblr " aria-hidden="true"></i></a></li>
+  <li><a class="icon" target="_blank" rel="noopener" href="https://news.ycombinator.com/submitlink?u=http://example.com/2021/04/21/Golang-error-%E5%A4%84%E7%90%86/&t=Golang error 处理"><i class="fab fa-hacker-news " aria-hidden="true"></i></a></li>
+</ul>
+
+    </div>
+    <div id="toc">
+      <ol class="toc"><li class="toc-item toc-level-2"><a class="toc-link" href="#0X00-error-%E6%96%B0%E7%94%A8%E6%B3%95"><span class="toc-number">1.</span> <span class="toc-text">0X00 error 新用法</span></a><ol class="toc-child"><li class="toc-item toc-level-3"><a class="toc-link" href="#WithWithStack"><span class="toc-number">1.1.</span> <span class="toc-text">WithWithStack</span></a></li><li class="toc-item toc-level-3"><a class="toc-link" href="#Unwrap-%E5%92%8C-Wrap"><span class="toc-number">1.2.</span> <span class="toc-text">Unwrap 和 Wrap</span></a></li><li class="toc-item toc-level-3"><a class="toc-link" href="#Cause"><span class="toc-number">1.3.</span> <span class="toc-text">Cause</span></a></li><li class="toc-item toc-level-3"><a class="toc-link" href="#Is"><span class="toc-number">1.4.</span> <span class="toc-text">Is</span></a></li><li class="toc-item toc-level-3"><a class="toc-link" href="#As"><span class="toc-number">1.5.</span> <span class="toc-text">As</span></a></li></ol></li><li class="toc-item toc-level-2"><a class="toc-link" href="#0X01-%E6%80%BB%E7%BB%93-error-%E7%9B%B8%E5%85%B3%E7%9A%84%E6%9C%80%E4%BD%B3%E5%AE%9E%E8%B7%B5"><span class="toc-number">2.</span> <span class="toc-text">0X01 总结 error 相关的最佳实践</span></a><ol class="toc-child"><li class="toc-item toc-level-3"><a class="toc-link" href="#%E4%B8%8D%E8%A6%81%E5%85%89%E6%A3%80%E6%9F%A5%E9%94%99%E8%AF%AF%E6%9C%80%E5%A5%BD%E5%8A%A0%E4%B8%8A%E4%B8%8A%E4%B8%8B%E6%96%87"><span class="toc-number">2.1.</span> <span class="toc-text">不要光检查错误最好加上上下文</span></a></li><li class="toc-item toc-level-3"><a class="toc-link" href="#%E7%94%A8-errors-Is-%E5%8C%B9%E9%85%8D%E9%94%99%E8%AF%AF"><span class="toc-number">2.2.</span> <span class="toc-text">用 errors.Is 匹配错误</span></a></li><li class="toc-item toc-level-3"><a class="toc-link" href="#%E5%A4%84%E7%90%86%E5%A4%9A%E4%B8%AA%E9%94%99%E8%AF%AF"><span class="toc-number">2.3.</span> <span class="toc-text">处理多个错误</span></a></li><li class="toc-item toc-level-3"><a class="toc-link" href="#%E4%B8%8D%E8%A6%81%E5%A4%84%E7%90%86%E5%90%8C%E4%B8%80%E4%B8%AA%E9%94%99%E8%AF%AF%E4%B8%A4%E6%AC%A1"><span class="toc-number">2.4.</span> <span class="toc-text">不要处理同一个错误两次</span></a></li><li class="toc-item toc-level-3"><a class="toc-link" href="#0X02-%E6%80%BB%E7%BB%93"><span class="toc-number">2.5.</span> <span class="toc-text">0X02 总结</span></a></li></ol></li></ol>
+    </div>
+  </span>
+</div>
+
+    
+    <div class="content index py4">
+        
+        <article class="post" itemscope itemtype="http://schema.org/BlogPosting">
+  <header>
+    
+    <h1 class="posttitle" itemprop="name headline">
+        Golang error 处理
+    </h1>
+
+
+
+    <div class="meta">
+      <span class="author" itemprop="author" itemscope itemtype="http://schema.org/Person">
+        <span itemprop="name">John Doe</span>
+      </span>
+      
+    <div class="postdate">
+      
+        <time datetime="2021-04-21T05:33:06.000Z" itemprop="datePublished">2021-04-21</time>
+        
+      
+    </div>
+
+
+      
+
+      
+
+    </div>
+  </header>
+  
+
+  <div class="content" itemprop="articleBody">
+    <blockquote>
+<p>在学习了 errors 相关的最佳实践以后，好好整理总结一下这方面的知识。</p>
+</blockquote>
+<h2 id="0X00-error-新用法"><a href="#0X00-error-新用法" class="headerlink" title="0X00 error 新用法"></a>0X00 error 新用法</h2><p>首先通读这篇文档：<a target="_blank" rel="noopener" href="https://golang.org/pkg/errors/">https://golang.org/pkg/errors/</a></p>
+<p>主要是多了这几个函数：</p>
+<figure class="highlight go"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line"><span class="keyword">import</span> <span class="string">&quot;github.com/pkg/errors&quot;</span></span><br></pre></td></tr></table></figure>
+
+
+
+<ul>
+<li><p>WithWithStack</p>
+</li>
+<li><p>Unwrap 和 Wrap</p>
+</li>
+<li><p>As</p>
+</li>
+<li><p>Is</p>
+</li>
+<li><p>Cause</p>
+</li>
+</ul>
+<p>从源码分别介绍这些方法：</p>
+<h3 id="WithWithStack"><a href="#WithWithStack" class="headerlink" title="WithWithStack"></a>WithWithStack</h3><figure class="highlight go"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br><span class="line">28</span><br><span class="line">29</span><br><span class="line">30</span><br><span class="line">31</span><br><span class="line">32</span><br><span class="line">33</span><br><span class="line">34</span><br><span class="line">35</span><br><span class="line">36</span><br><span class="line">37</span><br></pre></td><td class="code"><pre><span class="line"><span class="keyword">type</span> withStack <span class="keyword">struct</span> &#123;</span><br><span class="line">	error</span><br><span class="line">	*stack</span><br><span class="line">&#125;</span><br><span class="line"></span><br><span class="line"><span class="function"><span class="keyword">func</span> <span class="params">(w *withStack)</span> <span class="title">Cause</span><span class="params">()</span> <span class="title">error</span></span> &#123; <span class="keyword">return</span> w.error &#125;</span><br><span class="line"></span><br><span class="line"><span class="comment">// Unwrap provides compatibility for Go 1.13 error chains.</span></span><br><span class="line"><span class="function"><span class="keyword">func</span> <span class="params">(w *withStack)</span> <span class="title">Unwrap</span><span class="params">()</span> <span class="title">error</span></span> &#123; <span class="keyword">return</span> w.error &#125;</span><br><span class="line"></span><br><span class="line"><span class="function"><span class="keyword">func</span> <span class="params">(w *withStack)</span> <span class="title">Format</span><span class="params">(s fmt.State, verb <span class="keyword">rune</span>)</span></span> &#123;</span><br><span class="line">	<span class="keyword">switch</span> verb &#123;</span><br><span class="line">	<span class="keyword">case</span> <span class="string">&#x27;v&#x27;</span>:</span><br><span class="line">		<span class="keyword">if</span> s.Flag(<span class="string">&#x27;+&#x27;</span>) &#123;</span><br><span class="line">			fmt.Fprintf(s, <span class="string">&quot;%+v&quot;</span>, w.Cause())</span><br><span class="line">			w.stack.Format(s, verb)</span><br><span class="line">			<span class="keyword">return</span></span><br><span class="line">		&#125;</span><br><span class="line">		<span class="keyword">fallthrough</span></span><br><span class="line">	<span class="keyword">case</span> <span class="string">&#x27;s&#x27;</span>:</span><br><span class="line">		io.WriteString(s, w.Error())</span><br><span class="line">	<span class="keyword">case</span> <span class="string">&#x27;q&#x27;</span>:</span><br><span class="line">		fmt.Fprintf(s, <span class="string">&quot;%q&quot;</span>, w.Error())</span><br><span class="line">	&#125;</span><br><span class="line">&#125;</span><br><span class="line"></span><br><span class="line"><span class="comment">// WithStack annotates err with a stack trace at the point WithStack was called.</span></span><br><span class="line"><span class="comment">// If err is nil, WithStack returns nil.</span></span><br><span class="line"><span class="function"><span class="keyword">func</span> <span class="title">WithStack</span><span class="params">(err error)</span> <span class="title">error</span></span> &#123;</span><br><span class="line">	<span class="keyword">if</span> err == <span class="literal">nil</span> &#123;</span><br><span class="line">		<span class="keyword">return</span> <span class="literal">nil</span></span><br><span class="line">	&#125;</span><br><span class="line">	<span class="keyword">return</span> &amp;withStack&#123;</span><br><span class="line">		err,</span><br><span class="line">		callers(),</span><br><span class="line">	&#125;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+
+
+
+<p>本质上就是一个带了上下文信息的 error：在输出的时候使用 %+v 这个可以打印，栈上面的信息。</p>
+<p>一个具体的例子：</p>
+<figure class="highlight go"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br></pre></td><td class="code"><pre><span class="line"><span class="keyword">package</span> main</span><br><span class="line"></span><br><span class="line"><span class="keyword">import</span> (</span><br><span class="line">	<span class="string">&quot;fmt&quot;</span></span><br><span class="line">	<span class="string">&quot;github.com/pkg/errors&quot;</span></span><br><span class="line">)</span><br><span class="line"></span><br><span class="line"><span class="function"><span class="keyword">func</span> <span class="title">main</span><span class="params">()</span></span> &#123;</span><br><span class="line">	err := errors.WithStack(fmt.Errorf(<span class="string">&quot;something fault&quot;</span>))</span><br><span class="line">	fmt.Printf(<span class="string">&quot;%+v&quot;</span>, err)</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+
+
+
+
+
+<h3 id="Unwrap-和-Wrap"><a href="#Unwrap-和-Wrap" class="headerlink" title="Unwrap 和 Wrap"></a>Unwrap 和 Wrap</h3><figure class="highlight go"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br></pre></td><td class="code"><pre><span class="line"><span class="comment">// Wrap returns an error annotating err with a stack trace</span></span><br><span class="line"><span class="comment">// at the point Wrap is called, and the supplied message.</span></span><br><span class="line"><span class="comment">// If err is nil, Wrap returns nil.</span></span><br><span class="line"><span class="function"><span class="keyword">func</span> <span class="title">Wrap</span><span class="params">(err error, message <span class="keyword">string</span>)</span> <span class="title">error</span></span> &#123;</span><br><span class="line">	<span class="keyword">if</span> err == <span class="literal">nil</span> &#123;</span><br><span class="line">		<span class="keyword">return</span> <span class="literal">nil</span></span><br><span class="line">	&#125;</span><br><span class="line">	err = &amp;withMessage&#123;</span><br><span class="line">		cause: err,</span><br><span class="line">		msg:   message,</span><br><span class="line">	&#125;</span><br><span class="line">	<span class="keyword">return</span> &amp;withStack&#123;</span><br><span class="line">		err,</span><br><span class="line">		callers(),</span><br><span class="line">	&#125;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+
+
+
+<p>Wrap 除了带了调用栈上面的信息，还能自定义 msg 信息。在这个库里面还带着有 Wrapf 这样的函数。</p>
+<p>使用 fmt.Errorf 的时候如果有 %w，那么会用一个 wrapError 去封装，带有一个 UnWrap 的方法。但不会有栈信息了。</p>
+<p>fmt.Errorf 的源码：</p>
+<figure class="highlight go"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br><span class="line">28</span><br></pre></td><td class="code"><pre><span class="line"><span class="function"><span class="keyword">func</span> <span class="title">Errorf</span><span class="params">(format <span class="keyword">string</span>, a ...<span class="keyword">interface</span>&#123;&#125;)</span> <span class="title">error</span></span> &#123;</span><br><span class="line">	p := newPrinter()</span><br><span class="line">	p.wrapErrs = <span class="literal">true</span></span><br><span class="line">	p.doPrintf(format, a)</span><br><span class="line">	s := <span class="keyword">string</span>(p.buf)</span><br><span class="line">	<span class="keyword">var</span> err error</span><br><span class="line">	<span class="keyword">if</span> p.wrappedErr == <span class="literal">nil</span> &#123;</span><br><span class="line">		err = errors.New(s)</span><br><span class="line">	&#125; <span class="keyword">else</span> &#123;</span><br><span class="line">		err = &amp;wrapError&#123;s, p.wrappedErr&#125;</span><br><span class="line">	&#125;</span><br><span class="line">	p.free()</span><br><span class="line">	<span class="keyword">return</span> err</span><br><span class="line">&#125;</span><br><span class="line"></span><br><span class="line"><span class="keyword">type</span> wrapError <span class="keyword">struct</span> &#123;</span><br><span class="line">	msg <span class="keyword">string</span></span><br><span class="line">	err error</span><br><span class="line">&#125;</span><br><span class="line"></span><br><span class="line"><span class="function"><span class="keyword">func</span> <span class="params">(e *wrapError)</span> <span class="title">Error</span><span class="params">()</span> <span class="title">string</span></span> &#123;</span><br><span class="line">	<span class="keyword">return</span> e.msg</span><br><span class="line">&#125;</span><br><span class="line"></span><br><span class="line"><span class="function"><span class="keyword">func</span> <span class="params">(e *wrapError)</span> <span class="title">Unwrap</span><span class="params">()</span> <span class="title">error</span></span> &#123;</span><br><span class="line">	<span class="keyword">return</span> e.err</span><br><span class="line">&#125;</span><br><span class="line"></span><br></pre></td></tr></table></figure>
+
+
+
+
+
+<p>因为有了 Wrap，所以一个错误可以不断封装，那么就有了一个 error chain 的概念。简单来说 error chain 就是封装链。对于封装链来说有三个问题待解决：</p>
+<ul>
+<li>如何找到最根本的错误</li>
+<li>如何判断这个 err 是不是由某个 err 封装过来的</li>
+<li>如何取封装链上的某一个 error</li>
+</ul>
+<p>就有了下面三个函数：Cause、Is、As</p>
+<h3 id="Cause"><a href="#Cause" class="headerlink" title="Cause"></a>Cause</h3><figure class="highlight go"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br></pre></td><td class="code"><pre><span class="line"><span class="function"><span class="keyword">func</span> <span class="title">Cause</span><span class="params">(err error)</span> <span class="title">error</span></span> &#123;</span><br><span class="line">	<span class="keyword">type</span> causer <span class="keyword">interface</span> &#123;</span><br><span class="line">		Cause() error</span><br><span class="line">	&#125;</span><br><span class="line"></span><br><span class="line">	<span class="keyword">for</span> err != <span class="literal">nil</span> &#123;</span><br><span class="line">		cause, ok := err.(causer)</span><br><span class="line">		<span class="keyword">if</span> !ok &#123;</span><br><span class="line">			<span class="keyword">break</span></span><br><span class="line">		&#125;</span><br><span class="line">		err = cause.Cause()</span><br><span class="line">	&#125;</span><br><span class="line">	<span class="keyword">return</span> err</span><br><span class="line">&#125;</span><br><span class="line"></span><br></pre></td></tr></table></figure>
+
+
+
+<p>比较简单明了，找所有封装链中，第一个没有实现 Cause 方法的。</p>
+<h3 id="Is"><a href="#Is" class="headerlink" title="Is"></a>Is</h3><p>这个是 errors 标准库里面的函数，但是被 “github.com/pkg/errors” 封装了：</p>
+<figure class="highlight go"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br></pre></td><td class="code"><pre><span class="line"><span class="function"><span class="keyword">func</span> <span class="title">Is</span><span class="params">(err, target error)</span> <span class="title">bool</span></span> &#123;</span><br><span class="line">   <span class="keyword">if</span> target == <span class="literal">nil</span> &#123;</span><br><span class="line">      <span class="keyword">return</span> err == target</span><br><span class="line">   &#125;</span><br><span class="line"></span><br><span class="line">   isComparable := reflectlite.TypeOf(target).Comparable()</span><br><span class="line">   <span class="keyword">for</span> &#123;</span><br><span class="line">      <span class="keyword">if</span> isComparable &amp;&amp; err == target &#123;</span><br><span class="line">         <span class="keyword">return</span> <span class="literal">true</span></span><br><span class="line">      &#125;</span><br><span class="line">      <span class="keyword">if</span> x, ok := err.(<span class="keyword">interface</span>&#123; Is(error) <span class="keyword">bool</span> &#125;); ok &amp;&amp; x.Is(target) &#123;</span><br><span class="line">         <span class="keyword">return</span> <span class="literal">true</span></span><br><span class="line">      &#125;</span><br><span class="line">      <span class="comment">// <span class="doctag">TODO:</span> consider supporting target.Is(err). This would allow</span></span><br><span class="line">      <span class="comment">// user-definable predicates, but also may allow for coping with sloppy</span></span><br><span class="line">      <span class="comment">// APIs, thereby making it easier to get away with them.</span></span><br><span class="line">      <span class="keyword">if</span> err = Unwrap(err); err == <span class="literal">nil</span> &#123;</span><br><span class="line">         <span class="keyword">return</span> <span class="literal">false</span></span><br><span class="line">      &#125;</span><br><span class="line">   &#125;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+
+
+
+<p>也比较简洁明了，就是不断的 Unwrap 不断的比较</p>
+<h3 id="As"><a href="#As" class="headerlink" title="As"></a>As</h3><figure class="highlight go"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br><span class="line">28</span><br><span class="line">29</span><br><span class="line">30</span><br><span class="line">31</span><br><span class="line">32</span><br><span class="line">33</span><br><span class="line">34</span><br><span class="line">35</span><br><span class="line">36</span><br><span class="line">37</span><br><span class="line">38</span><br><span class="line">39</span><br><span class="line">40</span><br><span class="line">41</span><br></pre></td><td class="code"><pre><span class="line"><span class="comment">// As finds the first error in err&#x27;s chain that matches target, and if so, sets</span></span><br><span class="line"><span class="comment">// target to that error value and returns true. Otherwise, it returns false.</span></span><br><span class="line"><span class="comment">//</span></span><br><span class="line"><span class="comment">// The chain consists of err itself followed by the sequence of errors obtained by</span></span><br><span class="line"><span class="comment">// repeatedly calling Unwrap.</span></span><br><span class="line"><span class="comment">//</span></span><br><span class="line"><span class="comment">// An error matches target if the error&#x27;s concrete value is assignable to the value</span></span><br><span class="line"><span class="comment">// pointed to by target, or if the error has a method As(interface&#123;&#125;) bool such that</span></span><br><span class="line"><span class="comment">// As(target) returns true. In the latter case, the As method is responsible for</span></span><br><span class="line"><span class="comment">// setting target.</span></span><br><span class="line"><span class="comment">//</span></span><br><span class="line"><span class="comment">// An error type might provide an As method so it can be treated as if it were a</span></span><br><span class="line"><span class="comment">// different error type.</span></span><br><span class="line"><span class="comment">//</span></span><br><span class="line"><span class="comment">// As panics if target is not a non-nil pointer to either a type that implements</span></span><br><span class="line"><span class="comment">// error, or to any interface type.</span></span><br><span class="line"><span class="function"><span class="keyword">func</span> <span class="title">As</span><span class="params">(err error, target <span class="keyword">interface</span>&#123;&#125;)</span> <span class="title">bool</span></span> &#123;</span><br><span class="line">	<span class="keyword">if</span> target == <span class="literal">nil</span> &#123;</span><br><span class="line">		<span class="built_in">panic</span>(<span class="string">&quot;errors: target cannot be nil&quot;</span>)</span><br><span class="line">	&#125;</span><br><span class="line">	val := reflectlite.ValueOf(target)</span><br><span class="line">	typ := val.Type()</span><br><span class="line">	<span class="keyword">if</span> typ.Kind() != reflectlite.Ptr || val.IsNil() &#123;</span><br><span class="line">		<span class="built_in">panic</span>(<span class="string">&quot;errors: target must be a non-nil pointer&quot;</span>)</span><br><span class="line">	&#125;</span><br><span class="line">	<span class="keyword">if</span> e := typ.Elem(); e.Kind() != reflectlite.Interface &amp;&amp; !e.Implements(errorType) &#123;</span><br><span class="line">		<span class="built_in">panic</span>(<span class="string">&quot;errors: *target must be interface or implement error&quot;</span>)</span><br><span class="line">	&#125;</span><br><span class="line">	targetType := typ.Elem()</span><br><span class="line">	<span class="keyword">for</span> err != <span class="literal">nil</span> &#123;</span><br><span class="line">		<span class="keyword">if</span> reflectlite.TypeOf(err).AssignableTo(targetType) &#123;</span><br><span class="line">			val.Elem().Set(reflectlite.ValueOf(err))</span><br><span class="line">			<span class="keyword">return</span> <span class="literal">true</span></span><br><span class="line">		&#125;</span><br><span class="line">		<span class="keyword">if</span> x, ok := err.(<span class="keyword">interface</span>&#123; As(<span class="keyword">interface</span>&#123;&#125;) <span class="keyword">bool</span> &#125;); ok &amp;&amp; x.As(target) &#123;</span><br><span class="line">			<span class="keyword">return</span> <span class="literal">true</span></span><br><span class="line">		&#125;</span><br><span class="line">		err = Unwrap(err)</span><br><span class="line">	&#125;</span><br><span class="line">	<span class="keyword">return</span> <span class="literal">false</span></span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+
+
+
+<p>跟 is 差不多。看整个封装链上能不能给 target 赋值。</p>
+<h2 id="0X01-总结-error-相关的最佳实践"><a href="#0X01-总结-error-相关的最佳实践" class="headerlink" title="0X01 总结 error 相关的最佳实践"></a>0X01 总结 error 相关的最佳实践</h2><p>这一部分来自：<a target="_blank" rel="noopener" href="https://tech.bytedance.net/articles/6938364052187906079">GOTT 9: Errors</a> 以及 <a target="_blank" rel="noopener" href="https://tech.bytedance.net/articles/6951794215336542238">GOTT 14: More on Error Handling</a></p>
+<h3 id="不要光检查错误最好加上上下文"><a href="#不要光检查错误最好加上上下文" class="headerlink" title="不要光检查错误最好加上上下文"></a>不要光检查错误最好加上上下文</h3><figure class="highlight go"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br></pre></td><td class="code"><pre><span class="line"><span class="comment">// Bad example</span></span><br><span class="line"><span class="keyword">if</span> err != <span class="literal">nil</span> &#123;</span><br><span class="line">	<span class="keyword">return</span> err </span><br><span class="line">&#125; </span><br><span class="line"></span><br><span class="line"><span class="comment">// The Best example</span></span><br><span class="line"><span class="keyword">import</span> <span class="string">&quot;fmt&quot;</span>  </span><br><span class="line"></span><br><span class="line"><span class="keyword">if</span> err != <span class="literal">nil</span> &#123;</span><br><span class="line">	<span class="keyword">return</span> fmt.Errorf(<span class="string">&quot;context: %w&quot;</span>, err) </span><br><span class="line">&#125; </span><br><span class="line"></span><br><span class="line"><span class="comment">// Good example</span></span><br><span class="line"><span class="keyword">import</span> <span class="string">&quot;github.com/pkg/errors&quot;</span></span><br><span class="line"></span><br><span class="line"><span class="keyword">if</span> err != <span class="literal">nil</span> &#123;</span><br><span class="line">	<span class="keyword">return</span> errors.Wrap(err, <span class="string">&quot;context&quot;</span>) </span><br><span class="line">&#125; </span><br></pre></td></tr></table></figure>
+
+
+
+<h3 id="用-errors-Is-匹配错误"><a href="#用-errors-Is-匹配错误" class="headerlink" title="用 errors.Is 匹配错误"></a>用 errors.Is 匹配错误</h3><figure class="highlight go"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br></pre></td><td class="code"><pre><span class="line"><span class="comment">// Bad example (Go &lt; 1.13)</span></span><br><span class="line"><span class="keyword">if</span> e == io.EOF </span><br><span class="line"></span><br><span class="line"><span class="comment">// Good example</span></span><br><span class="line"><span class="keyword">import</span> <span class="string">&quot;errors&quot;</span></span><br><span class="line"></span><br><span class="line"><span class="keyword">if</span> errors.Is(err, io.EOF) <span class="comment">// error could be wrapped </span></span><br></pre></td></tr></table></figure>
+
+
+
+<h3 id="处理多个错误"><a href="#处理多个错误" class="headerlink" title="处理多个错误"></a>处理多个错误</h3><p>（这个非常牛逼！解决了我之前一直不知道如何处理的难点）</p>
+<figure class="highlight go"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br><span class="line">28</span><br><span class="line">29</span><br><span class="line">30</span><br><span class="line">31</span><br><span class="line">32</span><br><span class="line">33</span><br><span class="line">34</span><br><span class="line">35</span><br><span class="line">36</span><br><span class="line">37</span><br><span class="line">38</span><br><span class="line">39</span><br><span class="line">40</span><br><span class="line">41</span><br><span class="line">42</span><br><span class="line">43</span><br><span class="line">44</span><br><span class="line">45</span><br><span class="line">46</span><br><span class="line">47</span><br><span class="line">48</span><br><span class="line">49</span><br><span class="line">50</span><br><span class="line">51</span><br><span class="line">52</span><br><span class="line">53</span><br><span class="line">54</span><br><span class="line">55</span><br><span class="line">56</span><br><span class="line">57</span><br><span class="line">58</span><br><span class="line">59</span><br><span class="line">60</span><br><span class="line">61</span><br><span class="line">62</span><br><span class="line">63</span><br><span class="line">64</span><br></pre></td><td class="code"><pre><span class="line"><span class="comment">// Bad example</span></span><br><span class="line"><span class="function"><span class="keyword">func</span> <span class="title">read</span><span class="params">()</span> <span class="params">(<span class="keyword">string</span>, error)</span></span> &#123;...&#125;  </span><br><span class="line"></span><br><span class="line">a, err := read() </span><br><span class="line"><span class="keyword">if</span> err != <span class="literal">nil</span> &#123;</span><br><span class="line">	<span class="keyword">return</span> err</span><br><span class="line">&#125; </span><br><span class="line">b, err := read()</span><br><span class="line"><span class="keyword">if</span> err != <span class="literal">nil</span> &#123;</span><br><span class="line">	<span class="keyword">return</span> err</span><br><span class="line">&#125;</span><br><span class="line">⋮ </span><br><span class="line">z, err := read() </span><br><span class="line"><span class="keyword">if</span> err != <span class="literal">nil</span> &#123;</span><br><span class="line">	<span class="keyword">return</span> err </span><br><span class="line">&#125;  </span><br><span class="line"></span><br><span class="line"><span class="comment">// Good example</span></span><br><span class="line"><span class="function"><span class="keyword">func</span> <span class="title">read</span><span class="params">()</span> <span class="params">(<span class="keyword">string</span>, error)</span></span> &#123;...&#125;</span><br><span class="line"></span><br><span class="line"><span class="keyword">var</span> err error </span><br><span class="line"></span><br><span class="line">r := <span class="function"><span class="keyword">func</span><span class="params">()</span> <span class="params">(s <span class="keyword">string</span>)</span></span> &#123;     </span><br><span class="line">	<span class="keyword">if</span> err != <span class="literal">nil</span> &#123;</span><br><span class="line">        	<span class="keyword">return</span> <span class="string">&quot;&quot;</span></span><br><span class="line">	&#125;</span><br><span class="line">        s, err = read()</span><br><span class="line">        <span class="keyword">return</span> s</span><br><span class="line">&#125; </span><br><span class="line"></span><br><span class="line">a := r()</span><br><span class="line">b := r()</span><br><span class="line">⋮</span><br><span class="line">z := r()</span><br><span class="line"></span><br><span class="line"><span class="keyword">if</span> err != <span class="literal">nil</span> &#123;</span><br><span class="line">	<span class="keyword">return</span> err </span><br><span class="line">&#125; </span><br><span class="line"></span><br><span class="line"><span class="comment">// Good example</span></span><br><span class="line"><span class="function"><span class="keyword">func</span> <span class="title">read</span><span class="params">()</span> <span class="params">(<span class="keyword">string</span>, error)</span></span> &#123;...&#125;  </span><br><span class="line"></span><br><span class="line"><span class="keyword">type</span> errReader <span class="keyword">struct</span> &#123;    </span><br><span class="line">	err error</span><br><span class="line">        r <span class="function"><span class="keyword">func</span><span class="params">()</span> <span class="params">(<span class="keyword">string</span>, error)</span></span> </span><br><span class="line">&#125;  </span><br><span class="line"></span><br><span class="line"><span class="function"><span class="keyword">func</span> <span class="params">(r *errReader)</span> <span class="title">read</span><span class="params">()</span> <span class="title">string</span></span> &#123;</span><br><span class="line">	<span class="keyword">if</span> r.err != <span class="literal">nil</span> &#123;</span><br><span class="line">        	<span class="keyword">return</span> <span class="string">&quot;&quot;</span></span><br><span class="line">	&#125;</span><br><span class="line">        s, e := r.r()</span><br><span class="line">        r.err = e</span><br><span class="line">        <span class="keyword">return</span> s</span><br><span class="line">&#125;  </span><br><span class="line"></span><br><span class="line">r := errReader&#123;r: read&#125;</span><br><span class="line">a := r.read()</span><br><span class="line">b := r.read()</span><br><span class="line">⋮</span><br><span class="line">z := r.read()</span><br><span class="line"><span class="keyword">if</span> r.err != <span class="literal">nil</span> &#123;</span><br><span class="line">	<span class="keyword">return</span> r.err</span><br><span class="line">&#125; </span><br></pre></td></tr></table></figure>
+
+
+
+<h3 id="不要处理同一个错误两次"><a href="#不要处理同一个错误两次" class="headerlink" title="不要处理同一个错误两次"></a>不要处理同一个错误两次</h3><p>比如是在我们打日志的时候，不要重复对一个错误打日志。</p>
+<p>最好的写法是在根节点打日志，在非根节点包装错误：</p>
+<figure class="highlight go"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br></pre></td><td class="code"><pre><span class="line"><span class="function"><span class="keyword">func</span> <span class="title">foo</span><span class="params">()</span> <span class="title">error</span></span> &#123;</span><br><span class="line">    f, err := os.Open(<span class="string">&quot;filename.txt&quot;</span>)</span><br><span class="line">    <span class="keyword">if</span> err != <span class="literal">nil</span> &#123;</span><br><span class="line">        <span class="keyword">return</span> fmt.Errorf(<span class="string">&quot;call os.Open failed, err: %w&quot;</span>, err)</span><br><span class="line">    &#125;</span><br><span class="line"></span><br><span class="line">    <span class="keyword">return</span> <span class="literal">nil</span></span><br><span class="line">&#125;</span><br><span class="line"></span><br><span class="line"><span class="function"><span class="keyword">func</span> <span class="title">bar</span><span class="params">()</span></span> &#123;</span><br><span class="line">    err := foo()</span><br><span class="line">    <span class="keyword">if</span> err != <span class="literal">nil</span> &#123;</span><br><span class="line">        <span class="comment">// handle error here</span></span><br><span class="line">    &#125;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+
+
+
+
+
+<h3 id="0X02-总结"><a href="#0X02-总结" class="headerlink" title="0X02 总结"></a>0X02 总结</h3><p>以上内容让我对 errors 的理解更深了一步，非常感谢</p>
+
+  </div>
+</article>
+
+
+
+        
+          <div id="footer-post-container">
+  <div id="footer-post">
+
+    <div id="nav-footer" style="display: none">
+      <ul>
+         
+          <li><a href="/">Home</a></li>
+         
+          <li><a href="/about/">About</a></li>
+         
+          <li><a href="/archives/">Writing</a></li>
+         
+          <li><a href="/projects_url">Projects</a></li>
+        
+      </ul>
+    </div>
+
+    <div id="toc-footer" style="display: none">
+      <ol class="toc"><li class="toc-item toc-level-2"><a class="toc-link" href="#0X00-error-%E6%96%B0%E7%94%A8%E6%B3%95"><span class="toc-number">1.</span> <span class="toc-text">0X00 error 新用法</span></a><ol class="toc-child"><li class="toc-item toc-level-3"><a class="toc-link" href="#WithWithStack"><span class="toc-number">1.1.</span> <span class="toc-text">WithWithStack</span></a></li><li class="toc-item toc-level-3"><a class="toc-link" href="#Unwrap-%E5%92%8C-Wrap"><span class="toc-number">1.2.</span> <span class="toc-text">Unwrap 和 Wrap</span></a></li><li class="toc-item toc-level-3"><a class="toc-link" href="#Cause"><span class="toc-number">1.3.</span> <span class="toc-text">Cause</span></a></li><li class="toc-item toc-level-3"><a class="toc-link" href="#Is"><span class="toc-number">1.4.</span> <span class="toc-text">Is</span></a></li><li class="toc-item toc-level-3"><a class="toc-link" href="#As"><span class="toc-number">1.5.</span> <span class="toc-text">As</span></a></li></ol></li><li class="toc-item toc-level-2"><a class="toc-link" href="#0X01-%E6%80%BB%E7%BB%93-error-%E7%9B%B8%E5%85%B3%E7%9A%84%E6%9C%80%E4%BD%B3%E5%AE%9E%E8%B7%B5"><span class="toc-number">2.</span> <span class="toc-text">0X01 总结 error 相关的最佳实践</span></a><ol class="toc-child"><li class="toc-item toc-level-3"><a class="toc-link" href="#%E4%B8%8D%E8%A6%81%E5%85%89%E6%A3%80%E6%9F%A5%E9%94%99%E8%AF%AF%E6%9C%80%E5%A5%BD%E5%8A%A0%E4%B8%8A%E4%B8%8A%E4%B8%8B%E6%96%87"><span class="toc-number">2.1.</span> <span class="toc-text">不要光检查错误最好加上上下文</span></a></li><li class="toc-item toc-level-3"><a class="toc-link" href="#%E7%94%A8-errors-Is-%E5%8C%B9%E9%85%8D%E9%94%99%E8%AF%AF"><span class="toc-number">2.2.</span> <span class="toc-text">用 errors.Is 匹配错误</span></a></li><li class="toc-item toc-level-3"><a class="toc-link" href="#%E5%A4%84%E7%90%86%E5%A4%9A%E4%B8%AA%E9%94%99%E8%AF%AF"><span class="toc-number">2.3.</span> <span class="toc-text">处理多个错误</span></a></li><li class="toc-item toc-level-3"><a class="toc-link" href="#%E4%B8%8D%E8%A6%81%E5%A4%84%E7%90%86%E5%90%8C%E4%B8%80%E4%B8%AA%E9%94%99%E8%AF%AF%E4%B8%A4%E6%AC%A1"><span class="toc-number">2.4.</span> <span class="toc-text">不要处理同一个错误两次</span></a></li><li class="toc-item toc-level-3"><a class="toc-link" href="#0X02-%E6%80%BB%E7%BB%93"><span class="toc-number">2.5.</span> <span class="toc-text">0X02 总结</span></a></li></ol></li></ol>
+    </div>
+
+    <div id="share-footer" style="display: none">
+      <ul>
+  <li><a class="icon" target="_blank" rel="noopener" href="http://www.facebook.com/sharer.php?u=http://example.com/2021/04/21/Golang-error-%E5%A4%84%E7%90%86/"><i class="fab fa-facebook fa-lg" aria-hidden="true"></i></a></li>
+  <li><a class="icon" target="_blank" rel="noopener" href="https://twitter.com/share?url=http://example.com/2021/04/21/Golang-error-%E5%A4%84%E7%90%86/&text=Golang error 处理"><i class="fab fa-twitter fa-lg" aria-hidden="true"></i></a></li>
+  <li><a class="icon" target="_blank" rel="noopener" href="http://www.linkedin.com/shareArticle?url=http://example.com/2021/04/21/Golang-error-%E5%A4%84%E7%90%86/&title=Golang error 处理"><i class="fab fa-linkedin fa-lg" aria-hidden="true"></i></a></li>
+  <li><a class="icon" target="_blank" rel="noopener" href="https://pinterest.com/pin/create/bookmarklet/?url=http://example.com/2021/04/21/Golang-error-%E5%A4%84%E7%90%86/&is_video=false&description=Golang error 处理"><i class="fab fa-pinterest fa-lg" aria-hidden="true"></i></a></li>
+  <li><a class="icon" href="mailto:?subject=Golang error 处理&body=Check out this article: http://example.com/2021/04/21/Golang-error-%E5%A4%84%E7%90%86/"><i class="fas fa-envelope fa-lg" aria-hidden="true"></i></a></li>
+  <li><a class="icon" target="_blank" rel="noopener" href="https://getpocket.com/save?url=http://example.com/2021/04/21/Golang-error-%E5%A4%84%E7%90%86/&title=Golang error 处理"><i class="fab fa-get-pocket fa-lg" aria-hidden="true"></i></a></li>
+  <li><a class="icon" target="_blank" rel="noopener" href="http://reddit.com/submit?url=http://example.com/2021/04/21/Golang-error-%E5%A4%84%E7%90%86/&title=Golang error 处理"><i class="fab fa-reddit fa-lg" aria-hidden="true"></i></a></li>
+  <li><a class="icon" target="_blank" rel="noopener" href="http://www.stumbleupon.com/submit?url=http://example.com/2021/04/21/Golang-error-%E5%A4%84%E7%90%86/&title=Golang error 处理"><i class="fab fa-stumbleupon fa-lg" aria-hidden="true"></i></a></li>
+  <li><a class="icon" target="_blank" rel="noopener" href="http://digg.com/submit?url=http://example.com/2021/04/21/Golang-error-%E5%A4%84%E7%90%86/&title=Golang error 处理"><i class="fab fa-digg fa-lg" aria-hidden="true"></i></a></li>
+  <li><a class="icon" target="_blank" rel="noopener" href="http://www.tumblr.com/share/link?url=http://example.com/2021/04/21/Golang-error-%E5%A4%84%E7%90%86/&name=Golang error 处理&description="><i class="fab fa-tumblr fa-lg" aria-hidden="true"></i></a></li>
+  <li><a class="icon" target="_blank" rel="noopener" href="https://news.ycombinator.com/submitlink?u=http://example.com/2021/04/21/Golang-error-%E5%A4%84%E7%90%86/&t=Golang error 处理"><i class="fab fa-hacker-news fa-lg" aria-hidden="true"></i></a></li>
+</ul>
+
+    </div>
+
+    <div id="actions-footer">
+        <a id="menu" class="icon" href="#" onclick="$('#nav-footer').toggle();return false;"><i class="fas fa-bars fa-lg" aria-hidden="true"></i> Menu</a>
+        <a id="toc" class="icon" href="#" onclick="$('#toc-footer').toggle();return false;"><i class="fas fa-list fa-lg" aria-hidden="true"></i> TOC</a>
+        <a id="share" class="icon" href="#" onclick="$('#share-footer').toggle();return false;"><i class="fas fa-share-alt fa-lg" aria-hidden="true"></i> Share</a>
+        <a id="top" style="display:none" class="icon" href="#" onclick="$('html, body').animate({ scrollTop: 0 }, 'fast');"><i class="fas fa-chevron-up fa-lg" aria-hidden="true"></i> Top</a>
+    </div>
+
+  </div>
+</div>
+
+        
+        <footer id="footer">
+  <div class="footer-left">
+    Copyright &copy;
+    
+    
+    2016-2021
+    John Doe
+  </div>
+  <div class="footer-right">
+    <nav>
+      <ul>
+         
+          <li><a href="/">Home</a></li>
+         
+          <li><a href="/about/">About</a></li>
+         
+          <li><a href="/archives/">Writing</a></li>
+         
+          <li><a href="/projects_url">Projects</a></li>
+        
+      </ul>
+    </nav>
+  </div>
+</footer>
+
+    </div>
+    <!-- styles -->
+
+
+
+  <link rel="preload" as="style" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/5.15.2/css/all.min.css" crossorigin="anonymous" onload="this.onload=null;this.rel='stylesheet'"/>
+
+
+    <!-- jquery -->
+ 
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/jquery/3.6.0/jquery.min.js" crossorigin="anonymous"></script> 
+
+
+
+
+<!-- clipboard -->
+
+  
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/clipboard.js/2.0.7/clipboard.min.js" crossorigin="anonymous"></script> 
+  
+  <script type="text/javascript">
+  $(function() {
+    // copy-btn HTML
+    var btn = "<span class=\"btn-copy tooltipped tooltipped-sw\" aria-label=\"Copy to clipboard!\">";
+    btn += '<i class="far fa-clone"></i>';
+    btn += '</span>'; 
+    // mount it!
+    $(".highlight table").before(btn);
+    var clip = new ClipboardJS('.btn-copy', {
+      text: function(trigger) {
+        return Array.from(trigger.nextElementSibling.querySelectorAll('.code')).reduce((str,it)=>str+it.innerText+'\n','')
+      }
+    });
+    clip.on('success', function(e) {
+      e.trigger.setAttribute('aria-label', "Copied!");
+      e.clearSelection();
+    })
+  })
+  </script>
+
+
+<script src="/js/main.js"></script>
+
+<!-- search -->
+
+<!-- Google Analytics -->
+
+<!-- Baidu Analytics -->
+
+<!-- Cloudflare Analytics -->
+
+<!-- Umami Analytics -->
+
+<!-- Disqus Comments -->
+
+
+</body>
+</html>
