@@ -1,0 +1,476 @@
+<!DOCTYPE html>
+<html lang=en>
+<head>
+    <!-- so meta -->
+    <meta charset="utf-8">
+    <meta http-equiv="X-UA-Compatible" content="IE=edge">
+    <meta name="HandheldFriendly" content="True">
+    <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=5" />
+    <meta name="description" content="0X00 需求分析为了提高单机 kv 数据库的能力，把 key 分片到不同的 Group 上去提高吞吐量。通过一个可靠的配置中心，实现多 Group 的 KV 数据库。 0X01 思考那么如何完成这个多组的分布式 KV 数据库。 我们先想一个基本思路： tn每一个组负责一个或者多个分片。轮询配置中心配置是否发生了改变。如果发生了改变，也就是说： Group 负责的分片发生了变化。  得到了一个或多">
+<meta property="og:type" content="article">
+<meta property="og:title" content="实现 shardkv">
+<meta property="og:url" content="http://example.com/2021/07/02/%E5%AE%9E%E7%8E%B0-shardkv/index.html">
+<meta property="og:site_name" content="Hexo">
+<meta property="og:description" content="0X00 需求分析为了提高单机 kv 数据库的能力，把 key 分片到不同的 Group 上去提高吞吐量。通过一个可靠的配置中心，实现多 Group 的 KV 数据库。 0X01 思考那么如何完成这个多组的分布式 KV 数据库。 我们先想一个基本思路： tn每一个组负责一个或者多个分片。轮询配置中心配置是否发生了改变。如果发生了改变，也就是说： Group 负责的分片发生了变化。  得到了一个或多">
+<meta property="og:locale" content="en_US">
+<meta property="article:published_time" content="2021-07-02T04:32:53.000Z">
+<meta property="article:modified_time" content="2021-07-04T06:33:36.893Z">
+<meta property="article:author" content="John Doe">
+<meta name="twitter:card" content="summary">
+    
+    
+      
+        
+          <link rel="shortcut icon" href="/images/favicon.ico">
+        
+      
+      
+        
+          <link rel="icon" type="image/png" href="/images/favicon-192x192.png" sizes="192x192">
+        
+      
+      
+        
+          <link rel="apple-touch-icon" sizes="180x180" href="/images/apple-touch-icon.png">
+        
+      
+    
+    <!-- title -->
+    <title>实现 shardkv</title>
+    <!-- styles -->
+    
+<link rel="stylesheet" href="/css/style.css">
+
+    <!-- persian styles -->
+    
+    <!-- rss -->
+    
+    
+<meta name="generator" content="Hexo 5.4.0"></head>
+
+<body class="max-width mx-auto px3 ltr">
+    
+      <div id="header-post">
+  <a id="menu-icon" href="#" aria-label="Menu"><i class="fas fa-bars fa-lg"></i></a>
+  <a id="menu-icon-tablet" href="#" aria-label="Menu"><i class="fas fa-bars fa-lg"></i></a>
+  <a id="top-icon-tablet" href="#" "Top" onclick="$('html, body').animate({ scrollTop: 0 }, 'fast');" style="display:none;"><i class="fas fa-chevron-up fa-lg"></i></a>
+  <span id="menu">
+    <span id="nav">
+      <ul>
+         
+          <li><a href="/">Home</a></li>
+         
+          <li><a href="/about/">About</a></li>
+         
+          <li><a href="/archives/">Writing</a></li>
+         
+          <li><a href="/projects_url">Projects</a></li>
+        
+      </ul>
+    </span>
+    <br/>
+    <span id="actions">
+      <ul>
+        
+        
+        <li><a class="icon" aria-label="Next post " href="/2021/06/26/%E5%AE%9E%E7%8E%B0-shardmaster/"><i class="fas fa-chevron-right" aria-hidden="true" onmouseover="$('#i-next').toggle();" onmouseout="$('#i-next').toggle();"></i></a></li>
+        
+        <li><a class="icon" aria-label="Back to top " href="#" onclick="$('html, body').animate({ scrollTop: 0 }, 'fast');"><i class="fas fa-chevron-up" aria-hidden="true" onmouseover="$('#i-top').toggle();" onmouseout="$('#i-top').toggle();"></i></a></li>
+        <li><a class="icon" aria-label="Share post " href="#"><i class="fas fa-share-alt" aria-hidden="true" onmouseover="$('#i-share').toggle();" onmouseout="$('#i-share').toggle();" onclick="$('#share').toggle();return false;"></i></a></li>
+      </ul>
+      <span id="i-prev" class="info" style="display:none;">Previous post</span>
+      <span id="i-next" class="info" style="display:none;">Next post</span>
+      <span id="i-top" class="info" style="display:none;">Back to top</span>
+      <span id="i-share" class="info" style="display:none;">Share post</span>
+    </span>
+    <br/>
+    <div id="share" style="display: none">
+      <ul>
+  <li><a class="icon" target="_blank" rel="noopener" href="http://www.facebook.com/sharer.php?u=http://example.com/2021/07/02/%E5%AE%9E%E7%8E%B0-shardkv/"><i class="fab fa-facebook " aria-hidden="true"></i></a></li>
+  <li><a class="icon" target="_blank" rel="noopener" href="https://twitter.com/share?url=http://example.com/2021/07/02/%E5%AE%9E%E7%8E%B0-shardkv/&text=实现 shardkv"><i class="fab fa-twitter " aria-hidden="true"></i></a></li>
+  <li><a class="icon" target="_blank" rel="noopener" href="http://www.linkedin.com/shareArticle?url=http://example.com/2021/07/02/%E5%AE%9E%E7%8E%B0-shardkv/&title=实现 shardkv"><i class="fab fa-linkedin " aria-hidden="true"></i></a></li>
+  <li><a class="icon" target="_blank" rel="noopener" href="https://pinterest.com/pin/create/bookmarklet/?url=http://example.com/2021/07/02/%E5%AE%9E%E7%8E%B0-shardkv/&is_video=false&description=实现 shardkv"><i class="fab fa-pinterest " aria-hidden="true"></i></a></li>
+  <li><a class="icon" href="mailto:?subject=实现 shardkv&body=Check out this article: http://example.com/2021/07/02/%E5%AE%9E%E7%8E%B0-shardkv/"><i class="fas fa-envelope " aria-hidden="true"></i></a></li>
+  <li><a class="icon" target="_blank" rel="noopener" href="https://getpocket.com/save?url=http://example.com/2021/07/02/%E5%AE%9E%E7%8E%B0-shardkv/&title=实现 shardkv"><i class="fab fa-get-pocket " aria-hidden="true"></i></a></li>
+  <li><a class="icon" target="_blank" rel="noopener" href="http://reddit.com/submit?url=http://example.com/2021/07/02/%E5%AE%9E%E7%8E%B0-shardkv/&title=实现 shardkv"><i class="fab fa-reddit " aria-hidden="true"></i></a></li>
+  <li><a class="icon" target="_blank" rel="noopener" href="http://www.stumbleupon.com/submit?url=http://example.com/2021/07/02/%E5%AE%9E%E7%8E%B0-shardkv/&title=实现 shardkv"><i class="fab fa-stumbleupon " aria-hidden="true"></i></a></li>
+  <li><a class="icon" target="_blank" rel="noopener" href="http://digg.com/submit?url=http://example.com/2021/07/02/%E5%AE%9E%E7%8E%B0-shardkv/&title=实现 shardkv"><i class="fab fa-digg " aria-hidden="true"></i></a></li>
+  <li><a class="icon" target="_blank" rel="noopener" href="http://www.tumblr.com/share/link?url=http://example.com/2021/07/02/%E5%AE%9E%E7%8E%B0-shardkv/&name=实现 shardkv&description="><i class="fab fa-tumblr " aria-hidden="true"></i></a></li>
+  <li><a class="icon" target="_blank" rel="noopener" href="https://news.ycombinator.com/submitlink?u=http://example.com/2021/07/02/%E5%AE%9E%E7%8E%B0-shardkv/&t=实现 shardkv"><i class="fab fa-hacker-news " aria-hidden="true"></i></a></li>
+</ul>
+
+    </div>
+    <div id="toc">
+      <ol class="toc"><li class="toc-item toc-level-2"><a class="toc-link" href="#0X00-%E9%9C%80%E6%B1%82%E5%88%86%E6%9E%90"><span class="toc-number">1.</span> <span class="toc-text">0X00 需求分析</span></a></li><li class="toc-item toc-level-2"><a class="toc-link" href="#0X01-%E6%80%9D%E8%80%83"><span class="toc-number">2.</span> <span class="toc-text">0X01 思考</span></a><ol class="toc-child"><li class="toc-item toc-level-3"><a class="toc-link" href="#%E5%A4%B1%E5%8E%BB%E4%BA%86%E4%B8%80%E4%B8%AA%E6%88%96%E5%A4%9A%E4%B8%AA%E5%88%86%E5%8C%BA%E7%9A%84%E6%97%B6%E5%80%99%E6%80%8E%E4%B9%88%E5%8A%9E"><span class="toc-number">2.1.</span> <span class="toc-text">失去了一个或多个分区的时候怎么办</span></a></li><li class="toc-item toc-level-3"><a class="toc-link" href="#%E4%BC%9A%E4%B8%8D%E4%BC%9A%E5%87%BA%E7%8E%B0%E5%88%86%E5%8C%BA%E7%BB%99%E4%BA%86%E5%8F%88%E5%9B%9E%E6%9D%A5%E7%9A%84%E5%B1%80%E9%9D%A2"><span class="toc-number">2.2.</span> <span class="toc-text">会不会出现分区给了又回来的局面</span></a></li><li class="toc-item toc-level-3"><a class="toc-link" href="#%E8%A6%81%E6%8C%81%E4%B9%85%E5%8C%96%E5%93%AA%E4%BA%9B%E6%97%A5%E5%BF%97"><span class="toc-number">2.3.</span> <span class="toc-text">要持久化哪些日志</span></a></li><li class="toc-item toc-level-3"><a class="toc-link" href="#%E5%9C%A8%E5%88%86%E7%89%87%E8%BF%81%E7%A7%BB%E7%9A%84%E6%97%B6%E5%80%99%E4%BC%9A%E4%B8%8D%E4%BC%9A%E5%87%BA%E7%8E%B0%E9%97%AE%E9%A2%98"><span class="toc-number">2.4.</span> <span class="toc-text">在分片迁移的时候会不会出现问题</span></a></li><li class="toc-item toc-level-3"><a class="toc-link" href="#%E5%9E%83%E5%9C%BE%E5%9B%9E%E6%94%B6%E6%80%8E%E4%B9%88%E5%AE%9E%E7%8E%B0"><span class="toc-number">2.5.</span> <span class="toc-text">垃圾回收怎么实现</span></a></li><li class="toc-item toc-level-3"><a class="toc-link" href="#PullConfig-%E6%80%8E%E4%B9%88%E5%AE%9E%E7%8E%B0"><span class="toc-number">2.6.</span> <span class="toc-text">PullConfig 怎么实现</span></a></li><li class="toc-item toc-level-3"><a class="toc-link" href="#%E4%B8%BA%E4%BB%80%E4%B9%88%E4%B8%8D%E7%9B%B4%E6%8E%A5%E6%8B%BF%E6%9C%80%E6%96%B0%E7%9A%84%E6%97%A5%E5%BF%97%EF%BC%8C%E5%8F%8D%E8%80%8C%E5%8F%AA%E6%8B%BF%E5%8D%95%E8%B0%83%E9%80%92%E5%A2%9E%E7%9A%84%E6%97%A5%E5%BF%97%E5%91%A2"><span class="toc-number">2.7.</span> <span class="toc-text">为什么不直接拿最新的日志，反而只拿单调递增的日志呢</span></a></li><li class="toc-item toc-level-3"><a class="toc-link" href="#ReConfig-%E6%80%8E%E4%B9%88%E5%AE%9E%E7%8E%B0"><span class="toc-number">2.8.</span> <span class="toc-text">ReConfig 怎么实现</span></a></li><li class="toc-item toc-level-3"><a class="toc-link" href="#ReConfig-%E7%9A%84%E6%97%B6%E5%80%99%E6%8C%82%E6%8E%89%E4%BA%86%E6%80%8E%E4%B9%88%E5%8A%9E"><span class="toc-number">2.9.</span> <span class="toc-text">ReConfig 的时候挂掉了怎么办</span></a></li><li class="toc-item toc-level-3"><a class="toc-link" href="#%E9%85%8D%E7%BD%AE%E6%9B%B4%E6%94%B9%E6%9C%9F%E9%97%B4%E7%9A%84%E5%AE%A2%E6%88%B7%E7%AB%AF%E8%AF%B7%E6%B1%82"><span class="toc-number">2.10.</span> <span class="toc-text">配置更改期间的客户端请求</span></a></li><li class="toc-item toc-level-3"><a class="toc-link" href="#%E5%8F%91%E9%80%81%E6%96%B9%E7%9A%84-Config-%E5%92%8C%E6%8E%A5%E6%94%B6%E6%96%B9%E7%9A%84-Config-%E4%B8%8D%E5%8C%B9%E9%85%8D%E6%80%8E%E4%B9%88%E5%8A%9E"><span class="toc-number">2.11.</span> <span class="toc-text">发送方的 Config 和接收方的 Config 不匹配怎么办</span></a></li><li class="toc-item toc-level-3"><a class="toc-link" href="#%E5%BF%AB%E7%85%A7%E8%A6%81%E5%A6%82%E4%BD%95%E5%AE%9E%E7%8E%B0"><span class="toc-number">2.12.</span> <span class="toc-text">快照要如何实现</span></a></li></ol></li><li class="toc-item toc-level-2"><a class="toc-link" href="#0X02-%E6%B5%81%E7%A8%8B%E5%9B%BE"><span class="toc-number">3.</span> <span class="toc-text">0X02 流程图</span></a></li></ol>
+    </div>
+  </span>
+</div>
+
+    
+    <div class="content index py4">
+        
+        <article class="post" itemscope itemtype="http://schema.org/BlogPosting">
+  <header>
+    
+    <h1 class="posttitle" itemprop="name headline">
+        实现 shardkv
+    </h1>
+
+
+
+    <div class="meta">
+      <span class="author" itemprop="author" itemscope itemtype="http://schema.org/Person">
+        <span itemprop="name">John Doe</span>
+      </span>
+      
+    <div class="postdate">
+      
+        <time datetime="2021-07-02T04:32:53.000Z" itemprop="datePublished">2021-07-02</time>
+        
+      
+    </div>
+
+
+      
+
+      
+
+    </div>
+  </header>
+  
+
+  <div class="content" itemprop="articleBody">
+    <h2 id="0X00-需求分析"><a href="#0X00-需求分析" class="headerlink" title="0X00 需求分析"></a>0X00 需求分析</h2><p>为了提高单机 kv 数据库的能力，把 key 分片到不同的 Group 上去提高吞吐量。通过一个可靠的配置中心，实现多 Group 的 KV 数据库。</p>
+<h2 id="0X01-思考"><a href="#0X01-思考" class="headerlink" title="0X01 思考"></a>0X01 思考</h2><p>那么如何完成这个多组的分布式 KV 数据库。</p>
+<p>我们先想一个基本思路：</p>
+<p>tn每一个组负责一个或者多个分片。轮询配置中心配置是否发生了改变。如果发生了改变，也就是说：</p>
+<p>Group 负责的分片发生了变化。</p>
+<ul>
+<li>得到了一个或多个分区</li>
+<li>失去了一个或多个分区</li>
+</ul>
+<h3 id="失去了一个或多个分区的时候怎么办"><a href="#失去了一个或多个分区的时候怎么办" class="headerlink" title="失去了一个或多个分区的时候怎么办"></a>失去了一个或多个分区的时候怎么办</h3><p>先考虑失去了一个分区的场景：</p>
+<p>有两种情况：</p>
+<ul>
+<li>该分区没有正在执行的操作</li>
+<li>该分区有正在执行的操作</li>
+</ul>
+<p>都没有关系，只需要不处理这个分片就可以了。在复制给大多数以后，会发现没有这个分片，然后告诉客户端 ErrWrongGroup。</p>
+<p>然后将这个分区发送给需要的 Group。</p>
+<p>当被修改配置文件的 Group 发现了自己的分区修改了，就要等到迁移完毕才能提供服务。</p>
+<h3 id="会不会出现分区给了又回来的局面"><a href="#会不会出现分区给了又回来的局面" class="headerlink" title="会不会出现分区给了又回来的局面"></a>会不会出现分区给了又回来的局面</h3><p>会出现。怎么解决：定时扫描吧。</p>
+<h3 id="要持久化哪些日志"><a href="#要持久化哪些日志" class="headerlink" title="要持久化哪些日志"></a>要持久化哪些日志</h3><p>所有的操作都需要持久化，想想需要哪些日志。</p>
+<ul>
+<li>Put、Get、Append</li>
+<li>NewConfig</li>
+<li>NewGC（发送成功，用做GC）</li>
+<li>NewMigrate</li>
+<li>Snapshot</li>
+</ul>
+<p>日志需要哪些参数：</p>
+<ul>
+<li><p>Put、Get、Append</p>
+</li>
+<li><p>NewConfig</p>
+</li>
+<li><p>NewGC</p>
+</li>
+<li><p>NewMigrate</p>
+</li>
+</ul>
+<h3 id="在分片迁移的时候会不会出现问题"><a href="#在分片迁移的时候会不会出现问题" class="headerlink" title="在分片迁移的时候会不会出现问题"></a>在分片迁移的时候会不会出现问题</h3><p>分片迁移的时候要发送 DB 和 ClientOp 两个 DB。在发送分区的时候，不会处理客户端的请求。就算处理了，之后 handle 的时候也会检查这是不是我的 key。如果不是就返回 ErrWrongGroup。</p>
+<p>在没有完全接受到这个分区的 server 也不会处理这个分区的请求。所以保证这个分片的安全。</p>
+<h3 id="垃圾回收怎么实现"><a href="#垃圾回收怎么实现" class="headerlink" title="垃圾回收怎么实现"></a>垃圾回收怎么实现</h3><p>垃圾回收</p>
+<h3 id="PullConfig-怎么实现"><a href="#PullConfig-怎么实现" class="headerlink" title="PullConfig 怎么实现"></a>PullConfig 怎么实现</h3><pre class="mermaid">graph TB
+    Start(Start)
+    End(end)
+    
+    Start --> IsKilled{IsKilled}
+    
+    IsKilled --> |Yes|End
+    
+    IsKilled --> |No|IsLastConfigFinished{IsLastConfigFinished}
+    
+    IsLastConfigFinished --> |Yes|GetNextConfig 
+    
+    IsLastConfigFinished --> |No|Ignore --> Sleep
+    
+    GetNextConfig --> RaftStart
+    
+    RaftStart --> Sleep
+    
+    Sleep --> IsKilled</pre>
+
+<p>如果 RaftStart 失败了怎么办，或者说出现小分区了怎么办。config 的增加是不是递增加一的。</p>
+<ul>
+<li>第一个 leader 的 config num 是 0。 之后都是递增 +1 的。</li>
+<li>假设当前的 g1 的 config num 是 x，Start 了 x + 1 的 Config</li>
+<li>g1 的 leader 挂了。</li>
+<li>新选出来的 leader 的 config num 不能比 x 小，如果比 x 小的话，说明日志丢了，但是日志不会丢。</li>
+<li>新选出来的 leader 的 config num 也不能比 x 大，如果大的话，说明 x + 1 这条日志已经被提交了，但是没提交之前原来的 leader 就挂了。</li>
+<li>所以只能等于 x，又 Start 了 x + 1 的 Config</li>
+<li>所以日志中能出现多个相同的 Config</li>
+</ul>
+<h3 id="为什么不直接拿最新的日志，反而只拿单调递增的日志呢"><a href="#为什么不直接拿最新的日志，反而只拿单调递增的日志呢" class="headerlink" title="为什么不直接拿最新的日志，反而只拿单调递增的日志呢"></a>为什么不直接拿最新的日志，反而只拿单调递增的日志呢</h3><p>我觉得最重要的还是简化操作吧。</p>
+<p>如果每次拿最新的，会出现这样的问题：G1 拿的是 10 的日志，G2 拿的是 13 的日志。可能一些原因导致：在 10 日志中 G1 需要 G2 的一个分区，就一直阻塞在等。但是 13 日志里面发现 G2 这个分片不是 G1 的。那么 G1 就会阻塞下去。</p>
+<p>当然能设置超时时间，比如 G1 等待一段时间都没得到分区的话，就放弃这个配置，重新拉取。但我感觉这样会增加复杂度，不如一个一个处理实现起来简单。</p>
+<h3 id="ReConfig-怎么实现"><a href="#ReConfig-怎么实现" class="headerlink" title="ReConfig 怎么实现"></a>ReConfig 怎么实现</h3><p>当 Start Config 被分配给大多数以后，会从 ApplyCh 出来。我们会定义一个 handleConfig 来处理 Config。</p>
+<p>handleConfig 的流程如下，Hint 也说了：一次只处理一个 Config，按顺序处理 Config。</p>
+<blockquote>
+<p>Process re-configurations one at a time, in order.</p>
+</blockquote>
+<p>大致流程如下：</p>
+<ul>
+<li>从 applyCh 收到 NewConfig</li>
+<li>构造 needShards 和 sendShards</li>
+<li>并发发送</li>
+</ul>
+<h3 id="ReConfig-的时候挂掉了怎么办"><a href="#ReConfig-的时候挂掉了怎么办" class="headerlink" title="ReConfig 的时候挂掉了怎么办"></a>ReConfig 的时候挂掉了怎么办</h3><ul>
+<li>在 newConfig 提交之前</li>
+</ul>
+<p>新 leader 会重新 pullConfig 重新来一遍</p>
+<ul>
+<li>在 newConfig 提交之后</li>
+</ul>
+<p>新的 leader 会在得到 config 的时候构造 needShards 和 sendShards</p>
+<ul>
+<li>一部分 NewSend 日志成功，一部分没成功</li>
+</ul>
+<p>新的 Leader 在得到 config 的时候构造 needShards 和 sendShards，然后重发一遍。</p>
+<h3 id="配置更改期间的客户端请求"><a href="#配置更改期间的客户端请求" class="headerlink" title="配置更改期间的客户端请求"></a>配置更改期间的客户端请求</h3><p>要实现配置更改期间的客户端请求，还要服务其他分区的请求。我觉得只能用不同粒度的锁。</p>
+<h3 id="发送方的-Config-和接收方的-Config-不匹配怎么办"><a href="#发送方的-Config-和接收方的-Config-不匹配怎么办" class="headerlink" title="发送方的 Config 和接收方的 Config 不匹配怎么办"></a>发送方的 Config 和接收方的 Config 不匹配怎么办</h3><p>等待</p>
+<h3 id="快照要如何实现"><a href="#快照要如何实现" class="headerlink" title="快照要如何实现"></a>快照要如何实现</h3><p>这个放在最后实现。</p>
+<h2 id="0X02-流程图"><a href="#0X02-流程图" class="headerlink" title="0X02 流程图"></a>0X02 流程图</h2><ul>
+<li>Put、Get、PutAppend 与之前基本一致，需要判断是不是自己的分区，如果不是需要拒绝，需要 double check。</li>
+<li>PullConfig</li>
+</ul>
+<p>需要一个协程不断的扫描</p>
+<pre class="mermaid">graph TB
+    Start(Start)
+    End(end)
+    
+    Start --> IsKilled{IsKilled}
+    
+    IsKilled --> |Yes|End
+    
+    IsKilled --> |No|IsLastConfigFinished{IsLastConfigFinished}
+    
+    IsLastConfigFinished --> |Yes|GetNextConfig 
+    
+    IsLastConfigFinished --> |No|Ignore --> Sleep
+    
+    GetNextConfig --> RaftStart
+    
+    RaftStart --> Sleep
+    
+    Sleep --> IsKilled</pre>
+
+<ul>
+<li>HandleNewConfig</li>
+</ul>
+<pre class="mermaid">graph TB
+    Start(Start)
+    End(End)
+    Start --> MakeSendMap --> MakeMigrateMap
+    MakeMigrateMap --> GetAllSendShard
+    GetAllSendShard --> GoSend --> End</pre>
+
+<ul>
+<li>HandleGC</li>
+</ul>
+<p>发送成功以后的 GC，从 SendMap 中删除这个 shard。</p>
+<pre class="mermaid">graph TB
+    Start(Start)
+    End(End)
+    
+    Start --> IsShardInSendMap{IsShardInSendMap}
+    
+    IsShardInSendMap --> |No|Ignore
+    
+    
+    IsShardInSendMap --> |Yes|DeleteShard
+    
+    Ignore --> End
+    DeleteShard --> End</pre>
+
+
+
+
+
+<ul>
+<li>HandleMigrate</li>
+</ul>
+<p>在接收到 Shard 以后，会写一条日志，安装这个 Shard。</p>
+<pre class="mermaid">graph TB
+    Start(Start)
+    End(End)
+    
+    Start --> IsConfigNumEuqal{IsConfigNumEuqal}
+    
+    IsConfigNumEuqal --> |No|Ignore
+    IsConfigNumEuqal --> IsShardInMigrateMap{IsShardInMigrateMap}
+    
+    IsShardInMigrateMap --> |No|Ignore
+    
+    IsShardInMigrateMap --> |Yes|DeleteInMigrateMap
+    
+    DeleteInMigrateMap --> MoveToShardsDB
+    
+    Ignore --> End
+    MoveToShardsDB --> End</pre>
+
+
+
+
+
+<pre class="mermaid">graph TB</pre>
+
+
+
+
+
+
+
+
+
+
+
+
+  </div>
+</article>
+
+
+
+        
+          <div id="footer-post-container">
+  <div id="footer-post">
+
+    <div id="nav-footer" style="display: none">
+      <ul>
+         
+          <li><a href="/">Home</a></li>
+         
+          <li><a href="/about/">About</a></li>
+         
+          <li><a href="/archives/">Writing</a></li>
+         
+          <li><a href="/projects_url">Projects</a></li>
+        
+      </ul>
+    </div>
+
+    <div id="toc-footer" style="display: none">
+      <ol class="toc"><li class="toc-item toc-level-2"><a class="toc-link" href="#0X00-%E9%9C%80%E6%B1%82%E5%88%86%E6%9E%90"><span class="toc-number">1.</span> <span class="toc-text">0X00 需求分析</span></a></li><li class="toc-item toc-level-2"><a class="toc-link" href="#0X01-%E6%80%9D%E8%80%83"><span class="toc-number">2.</span> <span class="toc-text">0X01 思考</span></a><ol class="toc-child"><li class="toc-item toc-level-3"><a class="toc-link" href="#%E5%A4%B1%E5%8E%BB%E4%BA%86%E4%B8%80%E4%B8%AA%E6%88%96%E5%A4%9A%E4%B8%AA%E5%88%86%E5%8C%BA%E7%9A%84%E6%97%B6%E5%80%99%E6%80%8E%E4%B9%88%E5%8A%9E"><span class="toc-number">2.1.</span> <span class="toc-text">失去了一个或多个分区的时候怎么办</span></a></li><li class="toc-item toc-level-3"><a class="toc-link" href="#%E4%BC%9A%E4%B8%8D%E4%BC%9A%E5%87%BA%E7%8E%B0%E5%88%86%E5%8C%BA%E7%BB%99%E4%BA%86%E5%8F%88%E5%9B%9E%E6%9D%A5%E7%9A%84%E5%B1%80%E9%9D%A2"><span class="toc-number">2.2.</span> <span class="toc-text">会不会出现分区给了又回来的局面</span></a></li><li class="toc-item toc-level-3"><a class="toc-link" href="#%E8%A6%81%E6%8C%81%E4%B9%85%E5%8C%96%E5%93%AA%E4%BA%9B%E6%97%A5%E5%BF%97"><span class="toc-number">2.3.</span> <span class="toc-text">要持久化哪些日志</span></a></li><li class="toc-item toc-level-3"><a class="toc-link" href="#%E5%9C%A8%E5%88%86%E7%89%87%E8%BF%81%E7%A7%BB%E7%9A%84%E6%97%B6%E5%80%99%E4%BC%9A%E4%B8%8D%E4%BC%9A%E5%87%BA%E7%8E%B0%E9%97%AE%E9%A2%98"><span class="toc-number">2.4.</span> <span class="toc-text">在分片迁移的时候会不会出现问题</span></a></li><li class="toc-item toc-level-3"><a class="toc-link" href="#%E5%9E%83%E5%9C%BE%E5%9B%9E%E6%94%B6%E6%80%8E%E4%B9%88%E5%AE%9E%E7%8E%B0"><span class="toc-number">2.5.</span> <span class="toc-text">垃圾回收怎么实现</span></a></li><li class="toc-item toc-level-3"><a class="toc-link" href="#PullConfig-%E6%80%8E%E4%B9%88%E5%AE%9E%E7%8E%B0"><span class="toc-number">2.6.</span> <span class="toc-text">PullConfig 怎么实现</span></a></li><li class="toc-item toc-level-3"><a class="toc-link" href="#%E4%B8%BA%E4%BB%80%E4%B9%88%E4%B8%8D%E7%9B%B4%E6%8E%A5%E6%8B%BF%E6%9C%80%E6%96%B0%E7%9A%84%E6%97%A5%E5%BF%97%EF%BC%8C%E5%8F%8D%E8%80%8C%E5%8F%AA%E6%8B%BF%E5%8D%95%E8%B0%83%E9%80%92%E5%A2%9E%E7%9A%84%E6%97%A5%E5%BF%97%E5%91%A2"><span class="toc-number">2.7.</span> <span class="toc-text">为什么不直接拿最新的日志，反而只拿单调递增的日志呢</span></a></li><li class="toc-item toc-level-3"><a class="toc-link" href="#ReConfig-%E6%80%8E%E4%B9%88%E5%AE%9E%E7%8E%B0"><span class="toc-number">2.8.</span> <span class="toc-text">ReConfig 怎么实现</span></a></li><li class="toc-item toc-level-3"><a class="toc-link" href="#ReConfig-%E7%9A%84%E6%97%B6%E5%80%99%E6%8C%82%E6%8E%89%E4%BA%86%E6%80%8E%E4%B9%88%E5%8A%9E"><span class="toc-number">2.9.</span> <span class="toc-text">ReConfig 的时候挂掉了怎么办</span></a></li><li class="toc-item toc-level-3"><a class="toc-link" href="#%E9%85%8D%E7%BD%AE%E6%9B%B4%E6%94%B9%E6%9C%9F%E9%97%B4%E7%9A%84%E5%AE%A2%E6%88%B7%E7%AB%AF%E8%AF%B7%E6%B1%82"><span class="toc-number">2.10.</span> <span class="toc-text">配置更改期间的客户端请求</span></a></li><li class="toc-item toc-level-3"><a class="toc-link" href="#%E5%8F%91%E9%80%81%E6%96%B9%E7%9A%84-Config-%E5%92%8C%E6%8E%A5%E6%94%B6%E6%96%B9%E7%9A%84-Config-%E4%B8%8D%E5%8C%B9%E9%85%8D%E6%80%8E%E4%B9%88%E5%8A%9E"><span class="toc-number">2.11.</span> <span class="toc-text">发送方的 Config 和接收方的 Config 不匹配怎么办</span></a></li><li class="toc-item toc-level-3"><a class="toc-link" href="#%E5%BF%AB%E7%85%A7%E8%A6%81%E5%A6%82%E4%BD%95%E5%AE%9E%E7%8E%B0"><span class="toc-number">2.12.</span> <span class="toc-text">快照要如何实现</span></a></li></ol></li><li class="toc-item toc-level-2"><a class="toc-link" href="#0X02-%E6%B5%81%E7%A8%8B%E5%9B%BE"><span class="toc-number">3.</span> <span class="toc-text">0X02 流程图</span></a></li></ol>
+    </div>
+
+    <div id="share-footer" style="display: none">
+      <ul>
+  <li><a class="icon" target="_blank" rel="noopener" href="http://www.facebook.com/sharer.php?u=http://example.com/2021/07/02/%E5%AE%9E%E7%8E%B0-shardkv/"><i class="fab fa-facebook fa-lg" aria-hidden="true"></i></a></li>
+  <li><a class="icon" target="_blank" rel="noopener" href="https://twitter.com/share?url=http://example.com/2021/07/02/%E5%AE%9E%E7%8E%B0-shardkv/&text=实现 shardkv"><i class="fab fa-twitter fa-lg" aria-hidden="true"></i></a></li>
+  <li><a class="icon" target="_blank" rel="noopener" href="http://www.linkedin.com/shareArticle?url=http://example.com/2021/07/02/%E5%AE%9E%E7%8E%B0-shardkv/&title=实现 shardkv"><i class="fab fa-linkedin fa-lg" aria-hidden="true"></i></a></li>
+  <li><a class="icon" target="_blank" rel="noopener" href="https://pinterest.com/pin/create/bookmarklet/?url=http://example.com/2021/07/02/%E5%AE%9E%E7%8E%B0-shardkv/&is_video=false&description=实现 shardkv"><i class="fab fa-pinterest fa-lg" aria-hidden="true"></i></a></li>
+  <li><a class="icon" href="mailto:?subject=实现 shardkv&body=Check out this article: http://example.com/2021/07/02/%E5%AE%9E%E7%8E%B0-shardkv/"><i class="fas fa-envelope fa-lg" aria-hidden="true"></i></a></li>
+  <li><a class="icon" target="_blank" rel="noopener" href="https://getpocket.com/save?url=http://example.com/2021/07/02/%E5%AE%9E%E7%8E%B0-shardkv/&title=实现 shardkv"><i class="fab fa-get-pocket fa-lg" aria-hidden="true"></i></a></li>
+  <li><a class="icon" target="_blank" rel="noopener" href="http://reddit.com/submit?url=http://example.com/2021/07/02/%E5%AE%9E%E7%8E%B0-shardkv/&title=实现 shardkv"><i class="fab fa-reddit fa-lg" aria-hidden="true"></i></a></li>
+  <li><a class="icon" target="_blank" rel="noopener" href="http://www.stumbleupon.com/submit?url=http://example.com/2021/07/02/%E5%AE%9E%E7%8E%B0-shardkv/&title=实现 shardkv"><i class="fab fa-stumbleupon fa-lg" aria-hidden="true"></i></a></li>
+  <li><a class="icon" target="_blank" rel="noopener" href="http://digg.com/submit?url=http://example.com/2021/07/02/%E5%AE%9E%E7%8E%B0-shardkv/&title=实现 shardkv"><i class="fab fa-digg fa-lg" aria-hidden="true"></i></a></li>
+  <li><a class="icon" target="_blank" rel="noopener" href="http://www.tumblr.com/share/link?url=http://example.com/2021/07/02/%E5%AE%9E%E7%8E%B0-shardkv/&name=实现 shardkv&description="><i class="fab fa-tumblr fa-lg" aria-hidden="true"></i></a></li>
+  <li><a class="icon" target="_blank" rel="noopener" href="https://news.ycombinator.com/submitlink?u=http://example.com/2021/07/02/%E5%AE%9E%E7%8E%B0-shardkv/&t=实现 shardkv"><i class="fab fa-hacker-news fa-lg" aria-hidden="true"></i></a></li>
+</ul>
+
+    </div>
+
+    <div id="actions-footer">
+        <a id="menu" class="icon" href="#" onclick="$('#nav-footer').toggle();return false;"><i class="fas fa-bars fa-lg" aria-hidden="true"></i> Menu</a>
+        <a id="toc" class="icon" href="#" onclick="$('#toc-footer').toggle();return false;"><i class="fas fa-list fa-lg" aria-hidden="true"></i> TOC</a>
+        <a id="share" class="icon" href="#" onclick="$('#share-footer').toggle();return false;"><i class="fas fa-share-alt fa-lg" aria-hidden="true"></i> Share</a>
+        <a id="top" style="display:none" class="icon" href="#" onclick="$('html, body').animate({ scrollTop: 0 }, 'fast');"><i class="fas fa-chevron-up fa-lg" aria-hidden="true"></i> Top</a>
+    </div>
+
+  </div>
+</div>
+
+        
+        <footer id="footer">
+  <div class="footer-left">
+    Copyright &copy;
+    
+    
+    2016-2022
+    John Doe
+  </div>
+  <div class="footer-right">
+    <nav>
+      <ul>
+         
+          <li><a href="/">Home</a></li>
+         
+          <li><a href="/about/">About</a></li>
+         
+          <li><a href="/archives/">Writing</a></li>
+         
+          <li><a href="/projects_url">Projects</a></li>
+        
+      </ul>
+    </nav>
+  </div>
+</footer>
+
+    </div>
+    <!-- styles -->
+
+
+
+  <link rel="preload" as="style" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/5.15.2/css/all.min.css" crossorigin="anonymous" onload="this.onload=null;this.rel='stylesheet'"/>
+
+
+    <!-- jquery -->
+ 
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/jquery/3.6.0/jquery.min.js" crossorigin="anonymous"></script> 
+
+
+
+
+<!-- clipboard -->
+
+  
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/clipboard.js/2.0.7/clipboard.min.js" crossorigin="anonymous"></script> 
+  
+  <script type="text/javascript">
+  $(function() {
+    // copy-btn HTML
+    var btn = "<span class=\"btn-copy tooltipped tooltipped-sw\" aria-label=\"Copy to clipboard!\">";
+    btn += '<i class="far fa-clone"></i>';
+    btn += '</span>'; 
+    // mount it!
+    $(".highlight table").before(btn);
+    var clip = new ClipboardJS('.btn-copy', {
+      text: function(trigger) {
+        return Array.from(trigger.nextElementSibling.querySelectorAll('.code')).reduce((str,it)=>str+it.innerText+'\n','')
+      }
+    });
+    clip.on('success', function(e) {
+      e.trigger.setAttribute('aria-label', "Copied!");
+      e.clearSelection();
+    })
+  })
+  </script>
+
+
+<script src="/js/main.js"></script>
+
+<!-- search -->
+
+<!-- Google Analytics -->
+
+<!-- Baidu Analytics -->
+
+<!-- Cloudflare Analytics -->
+
+<!-- Umami Analytics -->
+
+<!-- Disqus Comments -->
+
+
+</body>
+</html>

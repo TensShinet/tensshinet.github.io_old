@@ -6,13 +6,15 @@
     <meta http-equiv="X-UA-Compatible" content="IE=edge">
     <meta name="HandheldFriendly" content="True">
     <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=5" />
-    <meta property="og:type" content="article">
+    <meta name="description" content="在 lab2A，我们已经实现了选举，接着完成剩下的内容：命令同步与持久化  0X00 命令同步初始化graph TB     Start(开始) --&gt; SetNextIndex[&quot;设置 nextIndex[] 中每个元素为 len(log)&quot;] --&gt; SetMatchIndex[&quot;设置 matchIndex[] 中每个元素为 -1&quot;] --&gt; End(结束)      appendLog这一">
+<meta property="og:type" content="article">
 <meta property="og:title" content="实现 Raft 命令同步与持久化">
 <meta property="og:url" content="http://example.com/2021/05/05/%E5%AE%9E%E7%8E%B0-Raft-%E5%91%BD%E4%BB%A4%E5%90%8C%E6%AD%A5%E4%B8%8E%E6%8C%81%E4%B9%85%E5%8C%96/index.html">
 <meta property="og:site_name" content="Hexo">
+<meta property="og:description" content="在 lab2A，我们已经实现了选举，接着完成剩下的内容：命令同步与持久化  0X00 命令同步初始化graph TB     Start(开始) --&gt; SetNextIndex[&quot;设置 nextIndex[] 中每个元素为 len(log)&quot;] --&gt; SetMatchIndex[&quot;设置 matchIndex[] 中每个元素为 -1&quot;] --&gt; End(结束)      appendLog这一">
 <meta property="og:locale" content="en_US">
 <meta property="article:published_time" content="2021-05-05T08:01:08.000Z">
-<meta property="article:modified_time" content="2021-05-05T08:01:08.168Z">
+<meta property="article:modified_time" content="2021-05-07T17:44:49.000Z">
 <meta property="article:author" content="John Doe">
 <meta name="twitter:card" content="summary">
     
@@ -70,6 +72,8 @@
     <span id="actions">
       <ul>
         
+        <li><a class="icon" aria-label="Previous post " href="/2021/05/28/%E5%AE%9E%E7%8E%B0Put%E3%80%81Get%E3%80%81Append/"><i class="fas fa-chevron-left" aria-hidden="true" onmouseover="$('#i-prev').toggle();" onmouseout="$('#i-prev').toggle();"></i></a></li>
+        
         
         <li><a class="icon" aria-label="Next post " href="/2021/05/01/%E5%AE%9E%E7%8E%B0-Raft-%E9%80%89%E4%B8%BE/"><i class="fas fa-chevron-right" aria-hidden="true" onmouseover="$('#i-next').toggle();" onmouseout="$('#i-next').toggle();"></i></a></li>
         
@@ -99,7 +103,7 @@
 
     </div>
     <div id="toc">
-      
+      <ol class="toc"><li class="toc-item toc-level-2"><a class="toc-link" href="#0X00-%E5%91%BD%E4%BB%A4%E5%90%8C%E6%AD%A5"><span class="toc-number">1.</span> <span class="toc-text">0X00 命令同步</span></a><ol class="toc-child"><li class="toc-item toc-level-3"><a class="toc-link" href="#%E5%88%9D%E5%A7%8B%E5%8C%96"><span class="toc-number">1.1.</span> <span class="toc-text">初始化</span></a></li><li class="toc-item toc-level-3"><a class="toc-link" href="#appendLog"><span class="toc-number">1.2.</span> <span class="toc-text">appendLog</span></a></li><li class="toc-item toc-level-3"><a class="toc-link" href="#%E8%BF%99%E4%B8%80%E9%83%A8%E5%88%86%E9%81%87%E5%88%B0%E7%9A%84%E9%97%AE%E9%A2%98"><span class="toc-number">1.3.</span> <span class="toc-text">这一部分遇到的问题</span></a></li></ol></li><li class="toc-item toc-level-2"><a class="toc-link" href="#0X01-%E6%8C%81%E4%B9%85%E5%8C%96"><span class="toc-number">2.</span> <span class="toc-text">0X01 持久化</span></a></li></ol>
     </div>
   </span>
 </div>
@@ -138,7 +142,114 @@
   
 
   <div class="content" itemprop="articleBody">
+    <blockquote>
+<p>在 lab2A，我们已经实现了选举，接着完成剩下的内容：命令同步与持久化</p>
+</blockquote>
+<h2 id="0X00-命令同步"><a href="#0X00-命令同步" class="headerlink" title="0X00 命令同步"></a>0X00 命令同步</h2><h3 id="初始化"><a href="#初始化" class="headerlink" title="初始化"></a>初始化</h3><pre class="mermaid">graph TB
+    Start(开始) --> SetNextIndex["设置 nextIndex[] 中每个元素为 len(log)"] --> SetMatchIndex["设置 matchIndex[] 中每个元素为 -1"] --> End(结束)</pre>
+
+
+
+
+
+<h3 id="appendLog"><a href="#appendLog" class="headerlink" title="appendLog"></a>appendLog</h3><p>这一部分，Raft 的上层通过 Start 这个 method 去写日志，不一定会成功，通过 Make 的 applyCh 通知是否成功提交。</p>
+<pre class="mermaid">graph TB
+    End(结束)
+    Start(开始) --> IsLeader{是不是 leader} --> |不是|End
+    IsLeader --> |是|CreateWaitChannel["创建一个等待 channel，传递的是reply"] --> |并发给每一个 peer|AppendEntry[[同步消息]]
     
+    AppendEntry --> ListenWaitChannel[["监听 wait channel"]]
+    ListenWaitChannel --> End</pre>
+
+<ul>
+<li>同步消息</li>
+</ul>
+<pre class="mermaid">graph TB
+    Start(开始)
+    End(结束)
+    Start --> MakeAppendEntriesArgs[构造 AppendEntries 参数]
+    MakeAppendEntriesArgs --> IsLeader{是不是 leader}
+    IsLeader --> |是|sendAppendEntries[发送 AppendEntries]
+    IsLeader --> |不是|sendMessageToWaitChannel["发消息给 WaitChannel"]
+    sendAppendEntries --> IsSendSuccess{发送是否成功}
+    
+    IsSendSuccess --> |否|sendAppendEntries
+    
+    IsSendSuccess --> |是|GetAppendEntriesReply[得到 replay]
+    GetAppendEntriesReply --> IsAppendSuccess
+    IsAppendSuccess{append 是否成功} --> |否|IsMyTermLess{是不是任期小了}
+    IsMyTermLess --> |"不匹配 prevLog"|GetX["得到 XTerm、XIndex、XLen"]
+    GetX --> |"构造条件见「如何快速确定 prevLogIndex」"|MakeAppendEntriesArgs
+    IsMyTermLess --> |是|backToFollower[回退成 follower]
+    
+    backToFollower --> sendMessageToWaitChannel
+    
+    IsAppendSuccess --> |是|sendMessageToWaitChannel
+    sendMessageToWaitChannel --> CounterPlusAndEqual{"计数器+1判断是不是等于 peer 数目"}
+    CounterPlusAndEqual --> |是|CloseWaitChannel["关闭 WaitChannel"]
+    CounterPlusAndEqual --> |否|End
+    CloseWaitChannel --> End</pre>
+
+
+
+<ul>
+<li>监听 WaitChannel</li>
+</ul>
+<pre class="mermaid">graph TB
+    Start(开始)
+    End(结束)
+    
+    Start --> GetReplyFromChannel["从 WaitChannel 得到 reply"]
+    
+    GetReplyFromChannel --> IsAppendSuccess{"Append 是否成功"}
+    
+    IsAppendSuccess --> |否|GetReplyFromChannel
+    
+    IsAppendSuccess --> |是|ApplyCntPlus[ApplyCnt++]
+    
+    ApplyCntPlus --> IsApplyCntMajority{"是否是大多数"}
+    
+    IsApplyCntMajority --> |是|UpdateCommit["rf.commitIndex = max(commitIndex, rf.commitIndex)"]
+    
+    IsApplyCntMajority --> |否|GetReplyFromChannel
+    
+    UpdateCommit --> End</pre>
+
+
+
+
+
+<h3 id="这一部分遇到的问题"><a href="#这一部分遇到的问题" class="headerlink" title="这一部分遇到的问题"></a>这一部分遇到的问题</h3><ul>
+<li>回退成 follower 要不要停止其他的 AppendEntry</li>
+</ul>
+<p>我觉得要，回退成 follower 以后，会改变 term，导致当前 term，有多个 leader。</p>
+<ul>
+<li>如何快速确定 prevLogIndex</li>
+</ul>
+<p>这里的快速确定的意思是，尽量减少通信的次数。按照论文和视频里面说的 AppendEntriesReply 会新增这三个 member（XTerm、Xindex、XLen）：</p>
+<figure class="highlight go"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br></pre></td><td class="code"><pre><span class="line"><span class="keyword">type</span> AppendEntriesReply <span class="keyword">struct</span> &#123;</span><br><span class="line">	Term    <span class="keyword">int</span>  <span class="comment">// currentTerm，为了 leader 更新自己的状态</span></span><br><span class="line">	Success <span class="keyword">bool</span> <span class="comment">// 如果 follower 成功包含了 entry 就返回 true</span></span><br><span class="line">	XTerm   <span class="keyword">int</span>  <span class="comment">// 如果 PrevLogIndex 存在，冲突 entry 的 term</span></span><br><span class="line">	XIndex  <span class="keyword">int</span>  <span class="comment">// 如果 PrevLogIndex 存在，冲突 entry 的 term 的第一个 index</span></span><br><span class="line">	XLen    <span class="keyword">int</span>  <span class="comment">// PrevLogIndex 不存在，日志长度</span></span><br><span class="line">&#125;</span><br><span class="line"></span><br></pre></td></tr></table></figure>
+
+
+
+<p>A. follower 的 log 长度 &lt; PrevLogIndex + 1</p>
+<p>B. follower 的 PrevLogIndex log 的 term != PrevLogTerm</p>
+<p>然后我们再构造新的参数：</p>
+<figure class="highlight go"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br></pre></td><td class="code"><pre><span class="line"><span class="keyword">type</span> AppendEntriesArgs <span class="keyword">struct</span> &#123;</span><br><span class="line">	Term         <span class="keyword">int</span>   <span class="comment">// leader 的 Term</span></span><br><span class="line">	LeaderId     <span class="keyword">int</span>   <span class="comment">// 有了 LeaderId 以后，follower 才能重定向</span></span><br><span class="line">	PrevLogIndex <span class="keyword">int</span>   <span class="comment">// 紧邻新 entry 的之前的 log index</span></span><br><span class="line">	PrevLogTerm  <span class="keyword">int</span>   <span class="comment">// 紧邻新 entry 的之前的 log Term</span></span><br><span class="line">	Entries      []Log <span class="comment">// 新增日志</span></span><br><span class="line">	LeaderCommit <span class="keyword">int</span>   <span class="comment">// leader 的 commitIndex</span></span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+
+
+
+<p>对于 A 情况：</p>
+<p>PrevLogIndex = XLen - 1 </p>
+<p>PrevLogTerm = log[XLen - 1].Term</p>
+<p>Entries = log[PrevLogIndex:needIndex+1]</p>
+<p>对于 B 情况：</p>
+<p>PrevLogIndex = XIndex - 1 </p>
+<p>PrevLogTerm = log[XIndex - 1].Term</p>
+<p>Entries = log[PrevLogIndex:needIndex+1]</p>
+<p>needIndex 为要同步的 index。</p>
+<p><strong>这样做的意义在于可以去掉重复的请求。而且保证 PrevLogIndex 递减。（这里很难理解，建议画图）</strong></p>
+<h2 id="0X01-持久化"><a href="#0X01-持久化" class="headerlink" title="0X01 持久化"></a>0X01 持久化</h2><p>只要更新了需要持久化的都需要持久化</p>
+
   </div>
 </article>
 
@@ -163,7 +274,7 @@
     </div>
 
     <div id="toc-footer" style="display: none">
-      
+      <ol class="toc"><li class="toc-item toc-level-2"><a class="toc-link" href="#0X00-%E5%91%BD%E4%BB%A4%E5%90%8C%E6%AD%A5"><span class="toc-number">1.</span> <span class="toc-text">0X00 命令同步</span></a><ol class="toc-child"><li class="toc-item toc-level-3"><a class="toc-link" href="#%E5%88%9D%E5%A7%8B%E5%8C%96"><span class="toc-number">1.1.</span> <span class="toc-text">初始化</span></a></li><li class="toc-item toc-level-3"><a class="toc-link" href="#appendLog"><span class="toc-number">1.2.</span> <span class="toc-text">appendLog</span></a></li><li class="toc-item toc-level-3"><a class="toc-link" href="#%E8%BF%99%E4%B8%80%E9%83%A8%E5%88%86%E9%81%87%E5%88%B0%E7%9A%84%E9%97%AE%E9%A2%98"><span class="toc-number">1.3.</span> <span class="toc-text">这一部分遇到的问题</span></a></li></ol></li><li class="toc-item toc-level-2"><a class="toc-link" href="#0X01-%E6%8C%81%E4%B9%85%E5%8C%96"><span class="toc-number">2.</span> <span class="toc-text">0X01 持久化</span></a></li></ol>
     </div>
 
     <div id="share-footer" style="display: none">
@@ -199,7 +310,7 @@
     Copyright &copy;
     
     
-    2016-2021
+    2016-2022
     John Doe
   </div>
   <div class="footer-right">
